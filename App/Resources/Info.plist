@@ -50,7 +50,5 @@
 	<string>© 2026 IvanJLM. MIT License.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>NSSupportsSuddenTermination</key>
-	<true/>
 </dict>
 </plist>

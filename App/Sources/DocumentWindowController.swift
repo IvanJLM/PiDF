@@ -190,6 +190,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         guard parked == nil, let document = pdfView.document, window?.attachedSheet == nil else { return }
         parked = Parked(document: document, destination: pdfView.currentDestination, pageIndex: pageIndex,
                         scale: pdfView.scaleFactor, autoScales: pdfView.autoScales)
+        rememberPosition()  // kept even if the app never gets to quit normally
         pdfView.document = nil
         Self.returnFreedMemory()
     }
