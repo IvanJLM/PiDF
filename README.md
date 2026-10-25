@@ -48,6 +48,7 @@ are not reading.
   the pointer is over the top of the window and fades out half a second after
   it leaves. Nothing runs while it is hidden.
 - **Continuous scrolling**, with pages fitted to the width of the window.
+  ← and → turn a whole page; ↑ and ↓ scroll a little.
   Zoom with a pinch, ⌘+ / ⌘−; ⌘0 shows the actual size, ⌘9 fits the width
   again. Two pages side by side with ⌥⌘2.
 - **Find** (⌘F): every match is highlighted; ⌘G and ⇧⌘G (or Return in the
@@ -74,7 +75,8 @@ auto-updates. For those, Open in Preview hands the document over.
 | ⌘+ / ⌘− | Zoom in / out |
 | ⌘0 / ⌘9 | Actual size / fit the width |
 | ⌥⌘2 | Two pages |
-| ⌥⌘← / ⌥⌘→ | Previous / next page |
+| ← / → (or ⌥⌘← / ⌥⌘→) | Previous / next page |
+| ↑ / ↓ | Scroll a little |
 | ⌥⌘↑ / ⌥⌘↓ | First / last page |
 | ⌥⌘G | Go to page |
 | ⌘[ / ⌘] | Back / forward after a link |

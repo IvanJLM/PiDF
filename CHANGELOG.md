@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0 — 2026-10-25
+
+- ← and → turn a whole page, like Next Page and Previous Page; ↑ and ↓ still
+  scroll a little. In the find field the arrows move the cursor as usual.
+
 ## 1.1.0 — 2026-10-25
 
 - Live Text stays off in documents whose first pages are images (a cover,
