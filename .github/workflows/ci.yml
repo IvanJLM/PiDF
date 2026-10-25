@@ -1,0 +1,33 @@
+# Builds PiDF and runs its tests on every pull request and on main.
+# Free on GitHub-hosted macOS runners because the repository is public.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        # The oldest Xcode the README supports, so newer SDKs on a developer's
+        # Mac cannot hide a break.
+        run: |
+          brew install xcodegen
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          xcodebuild -version
+      - name: Unit tests (Debug)
+        run: ./scripts/test.sh
+      - name: Release build, no warnings
+        run: |
+          xcodebuild -project PiDF.xcodeproj -scheme PiDF -configuration Release \
+            -derivedDataPath build/DD build 2>&1 | tee build/release.log | tail -3
+          if grep -E '^/.*(warning|error):' build/release.log; then exit 1; fi

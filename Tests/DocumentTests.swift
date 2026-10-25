@@ -64,7 +64,10 @@ final class DocumentTests: XCTestCase {
         let frame = try XCTUnwrap(portrait.window?.frame)
         let visible = try XCTUnwrap(portrait.window?.screen?.visibleFrame)
         XCTAssertEqual(frame.height, (visible.height * 0.92).rounded(), accuracy: 1)
-        XCTAssertEqual(frame.width / frame.height, 595 / 842, accuracy: 0.05, "the window has the page's shape")
+        // The page's shape, within the minimum width (a small screen, as on CI).
+        let shaped = (frame.height - 16) * 595 / 842 + 16
+        XCTAssertEqual(frame.width, min(max(shaped, 480), visible.width * 0.92).rounded(), accuracy: 1,
+                       "the window has the page's shape")
         XCTAssertTrue(portrait.pdfView.autoScales, "pages fit the width of the window")
     }
 
