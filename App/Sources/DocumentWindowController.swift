@@ -167,6 +167,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         var pageIndex: Int
         var scale: CGFloat
         var autoScales: Bool
+        /// A new version of the file arrived while in the background: its
+        /// matches have to be found again.
+        var reloaded = false
     }
 
     private var parked: Parked?
@@ -187,7 +190,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, !self.isClosed else { return }
-                self.isInBackground ? self.park() : self.unpark()
+                if self.isInBackground {
+                    self.park()
+                } else {
+                    self.unpark()
+                    self.followTwoPagesSetting()
+                }
             }
         }
     }
@@ -228,7 +236,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         } else {
             go(toIndex: saved.pageIndex)
         }
-        findBar?.reapply()
+        if saved.reloaded { findBar?.refresh() } else { findBar?.reapply() }
         updatePageNumber()
         if saved.document.isLocked && window?.attachedSheet == nil { askForPassword() }
     }
@@ -288,6 +296,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             parked?.document = fresh
             parked?.destination = nil
             parked?.pageIndex = index
+            parked?.reloaded = true
             onReload?()
             return
         }
@@ -371,10 +380,21 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     @objc func zoomToFit(_ sender: Any?) { pdfView.autoScales = true }
 
     @objc func toggleTwoPages(_ sender: Any?) {
-        let index = pageIndex
         let twoPages = pdfView.displayMode != .twoUpContinuous
-        pdfView.displayMode = twoPages ? .twoUpContinuous : .singlePageContinuous
         UserDefaults.standard.set(twoPages, forKey: Self.twoPagesKey)
+        show(twoPages: twoPages)
+    }
+
+    /// Two Pages is one setting for the whole app: a tab or window that
+    /// comes to the front shows it as it was last chosen.
+    private func followTwoPagesSetting() {
+        let twoPages = UserDefaults.standard.bool(forKey: Self.twoPagesKey)
+        if parked == nil, (pdfView.displayMode == .twoUpContinuous) != twoPages { show(twoPages: twoPages) }
+    }
+
+    private func show(twoPages: Bool) {
+        let index = pageIndex
+        pdfView.displayMode = twoPages ? .twoUpContinuous : .singlePageContinuous
         if pdfView.autoScales { pdfView.autoScales = true }
         go(toIndex: index)
     }
