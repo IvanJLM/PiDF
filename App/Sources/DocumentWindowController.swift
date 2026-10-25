@@ -2,7 +2,29 @@ import AppKit
 import PDFKit
 
 /// The windows PiDF shows documents in, so they can be told from panels.
-final class DocumentWindow: NSWindow {}
+final class DocumentWindow: NSWindow {
+    /// ← and → turn a whole page; ↑ and ↓ still scroll a little. Caught here,
+    /// before PDFKit's own views see the key, so it works wherever the click
+    /// left the focus, except while typing in a text field.
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, !(firstResponder is NSText),
+           event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+           let controller = windowController as? DocumentWindowController,
+           let key = event.charactersIgnoringModifiers?.unicodeScalars.first.map({ Int($0.value) }) {
+            switch key {
+            case NSLeftArrowFunctionKey:
+                controller.goToPreviousPage(nil)
+                return
+            case NSRightArrowFunctionKey:
+                controller.goToNextPage(nil)
+                return
+            default:
+                break
+            }
+        }
+        super.sendEvent(event)
+    }
+}
 
 /// One document, in its own window or as one tab of a window.
 @MainActor
