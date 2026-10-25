@@ -111,7 +111,8 @@ swift scripts/make-icon.swift           # redraw the app icon
 ```
 
 The tests write their own small PDFs with Core Graphics, so the repository
-holds no PDF files. The benchmark skips any app that is already running, so
+holds no PDF files. Every pull request runs them on GitHub Actions, with a
+Release build that fails on any warning. The benchmark skips any app that is already running, so
 it never closes your own documents.
 
 ## License

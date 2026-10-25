@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0 — 2026-10-25
+
+- Live Text stays off in documents whose first pages are images (a cover,
+  a blank page, an illustration): PiDF now looks at five pages spread over
+  the document, not the first three. Ten pages of such a document cost
+  0.37 s of CPU instead of 9.7 s.
+- Two Pages is one setting for every tab: a tab or window that comes to the
+  front shows it as last chosen, at the same spread.
+- Find searches again when the file changed while its tab was in the
+  background, instead of showing the old version's matches.
+- The reading position survives logging out or shutting down with PiDF
+  open, and a tab saves its page as soon as it goes to the background.
+- Tests and a warning-free Release build run on every pull request
+  (GitHub Actions, Xcode 26.6).
+
 ## 1.0.0 — 2026-10-25
 
 First release. A native Swift/AppKit PDF viewer written from scratch, on
