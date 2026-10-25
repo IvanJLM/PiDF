@@ -184,6 +184,21 @@ final class TextRecognitionTests: XCTestCase {
         XCTAssertFalse(controller.recognizesText)
     }
 
+    func testCoverPagesWithoutTextAreNotAScan() throws {
+        // A report whose cover, blank page and illustration are images.
+        let pages = ["", "", ""] + (1...9).map { "Chapter \($0)" }
+        let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent("cover.pdf"), pages: pages)
+        let document = try XCTUnwrap(PDFDocument(url: url))
+        XCTAssertFalse(DocumentWindowController.needsTextRecognition(document), "text after the cover: not a scan")
+        let controller = app.open([url], nextTo: nil)[0]
+        XCTAssertFalse(controller.recognizesText)
+    }
+
+    func testShortDocumentWithOneTextPageIsNotAScan() throws {
+        let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent("short.pdf"), pages: ["", "", "", "Text"])
+        XCTAssertFalse(DocumentWindowController.needsTextRecognition(try XCTUnwrap(PDFDocument(url: url))))
+    }
+
     func testScannedDocumentsKeepRecognition() throws {
         let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent("scan.pdf"), pages: ["", "", ""])
         let document = try XCTUnwrap(PDFDocument(url: url))
