@@ -84,10 +84,16 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// models and doubles the memory PiDF needs (about 90 MB more for one
     /// document). Only scanned pages need it: their text can then be selected
     /// and found. Documents that have text keep it off.
+    ///
+    /// Five pages spread over the document are looked at (first, quarters,
+    /// last), not only the first ones: a cover, a blank page and an
+    /// illustration at the start don't make a text document a scan.
     static func needsTextRecognition(_ document: PDFDocument) -> Bool {
         guard !document.isLocked, document.pageCount > 0 else { return false }
-        return (0..<min(document.pageCount, 3)).allSatisfy {
-            (document.page(at: $0)?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let last = document.pageCount - 1
+        let samples = Set((0...4).map { last * $0 / 4 })
+        return !samples.contains { index in
+            !(document.page(at: index)?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 
