@@ -256,6 +256,43 @@ final class BackgroundTabTests: XCTestCase {
         XCTAssertEqual(ReadingPositions.page(for: url), 9, "saved without waiting for the tab to close")
     }
 
+    func testFindIsRefreshedWhenABackgroundTabWasReloaded() async throws {
+        let folder = try Fixtures.folder(self)
+        let url = try Fixtures.pdf(at: folder.appendingPathComponent("a.pdf"), pages: ["needle one", "two", "needle three"])
+        let first = app.open([url], nextTo: nil)[0]
+        first.showFind(nil)
+        first.findBar?.search("needle")
+        await waitUntil { first.findBar?.matches.count == 2 && first.pdf?.isFinding == false }
+        app.open([try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 2)], nextTo: nil)
+        await waitUntil { first.isParked }
+        var reloaded = false
+        first.onReload = { reloaded = true }
+        try Fixtures.pdf(at: url, pages: ["nothing", "needle here only"])
+        await waitUntil { reloaded }
+        first.bringToFront()
+        await waitUntil { !first.isParked && first.findBar?.matches.count == 1 && first.pdf?.isFinding == false }
+        XCTAssertEqual(first.findBar?.matches.count, 1, "searched again in the new version")
+        let highlighted = first.pdfView.highlightedSelections ?? []
+        XCTAssertFalse(highlighted.isEmpty)
+        XCTAssertTrue(highlighted.allSatisfy { $0.pages.first?.document === first.pdf }, "no highlight of the old version")
+    }
+
+    func testTwoPagesIsOneSettingForEveryTab() async throws {
+        let stored = UserDefaults.standard.object(forKey: "TwoPages")
+        defer { UserDefaults.standard.set(stored, forKey: "TwoPages") }
+        UserDefaults.standard.set(false, forKey: "TwoPages")
+        let folder = try Fixtures.folder(self)
+        let first = app.open([try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 12)], nextTo: nil)[0]
+        first.go(toIndex: 7)
+        let second = app.open([try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 6)], nextTo: nil)[0]
+        await waitUntil { first.isParked }
+        second.toggleTwoPages(nil)
+        first.bringToFront()
+        await waitUntil { !first.isParked }
+        XCTAssertEqual(first.pdfView.displayMode, .twoUpContinuous, "the tab follows the setting when it comes back")
+        XCTAssertEqual(first.pageIndex / 2, 7 / 2, "at the same spread")
+    }
+
     func testBackgroundTabFollowsChangesToo() async throws {
         let folder = try Fixtures.folder(self)
         let url = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 8)
