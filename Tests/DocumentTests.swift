@@ -28,6 +28,12 @@ final class DocumentTests: XCTestCase {
         XCTAssertNil(Bundle.main.object(forInfoDictionaryKey: "NSSupportsAutomaticTermination"))
     }
 
+    func testMacOSNeverKillsPiDFWithoutSavingThePosition() {
+        // With sudden termination, logging out kills the app without
+        // applicationWillTerminate, and the open tabs lose their page.
+        XCTAssertNil(Bundle.main.object(forInfoDictionaryKey: "NSSupportsSuddenTermination"))
+    }
+
     func testDocumentsOpenAsTabsOfOneWindow() throws {
         let folder = try Fixtures.folder(self)
         let a = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 2)
@@ -223,6 +229,16 @@ final class BackgroundTabTests: XCTestCase {
         XCTAssertEqual(first.pageIndex, 12, "back at the same page")
         XCTAssertEqual(first.pdfView.scaleFactor, 1, accuracy: 0.01, "and the same zoom")
         XCTAssertTrue(second.isParked)
+    }
+
+    func testATabGoingToTheBackgroundSavesItsPage() async throws {
+        let folder = try Fixtures.folder(self)
+        let url = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 20)
+        let first = app.open([url], nextTo: nil)[0]
+        first.go(toIndex: 9)
+        app.open([try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 2)], nextTo: nil)
+        await waitUntil { first.isParked }
+        XCTAssertEqual(ReadingPositions.page(for: url), 9, "saved without waiting for the tab to close")
     }
 
     func testBackgroundTabFollowsChangesToo() async throws {
