@@ -1,0 +1,72 @@
+# project.yml — PiDF, a minimal native PDF viewer for macOS (Apple Silicon only)
+name: PiDF
+options:
+  bundleIdPrefix: com.ivanjlm
+  deploymentTarget:
+    macOS: "15.0"
+  xcodeVersion: "26.0"
+  groupSortPosition: top
+  defaultLocalization: en
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+    # Apple Silicon only.
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: NO
+    # Local ad-hoc signing: no Apple Developer account needed.
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: YES
+    SWIFT_EMIT_LOC_STRINGS: NO
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+  configs:
+    Release:
+      DEAD_CODE_STRIPPING: YES
+      SWIFT_COMPILATION_MODE: wholemodule
+      SWIFT_OPTIMIZATION_LEVEL: "-O"
+      DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+      STRIP_INSTALLED_PRODUCT: YES
+
+targets:
+  PiDF:
+    type: application
+    platform: macOS
+    sources:
+      - path: App/Sources
+      - path: App/Resources
+        excludes:
+          - "Info.plist"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ivanjlm.pidf
+        INFOPLIST_FILE: App/Resources/Info.plist
+        PRODUCT_NAME: PiDF
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  PiDFTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: PiDF
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ivanjlm.pidf.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  PiDF:
+    build:
+      targets:
+        PiDF: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - PiDFTests
