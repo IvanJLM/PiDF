@@ -59,11 +59,19 @@ are not reading.
   (for the last 200 documents). The page number shows in the title bar.
 - **Follows the file**: when another app saves a new version, PiDF shows it
   at the same page.
-- **Show in Finder** (⇧⌘R), **Open in Preview** (⇧⌘P) to annotate, sign or
-  print, and **full screen** (⌃⌘F).
+- **Highlight and notes**, in one yellow and nothing to set up. ⌃H
+  highlights the selected text (or removes the highlights under it). ⌃N
+  puts a note where the pointer is, in the type of the page's own text
+  (⌥Return for a new line); click a note to select it, drag it to move it,
+  double-click or ⌃N to edit it, Delete to remove it. Both are
+  ordinary PDF annotations, written into the file itself (⌘S, or when the
+  tab goes to the background, closes or PiDF quits), so they travel with
+  the document and show in Preview or any other viewer.
+- **Show in Finder** (⇧⌘R), **Open in Preview** (⇧⌘P) to sign, fill forms
+  or print, and **full screen** (⌃⌘F).
 
-There is no editing, no annotation, no sidebar, no preferences and no
-auto-updates. For those, Open in Preview hands the document over.
+There is no other editing, no sidebar, no preferences and no auto-updates.
+For those, Open in Preview hands the document over.
 
 ## Shortcuts
 
@@ -72,6 +80,10 @@ auto-updates. For those, Open in Preview hands the document over.
 | ⌘O | Open |
 | ⌘W | Close the tab |
 | ⌘F / ⌘G / ⇧⌘G | Find / next / previous match |
+| ⌃H | Highlight the selected text (again: remove it) |
+| ⌃N | Add a note where the pointer is (note selected: edit it) |
+| Delete | Remove the selected note |
+| ⌘S | Save the highlights and notes now |
 | ⌘+ / ⌘− | Zoom in / out |
 | ⌘0 / ⌘9 | Actual size / fit the width |
 | ⌥⌘2 | Two pages |

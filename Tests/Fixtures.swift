@@ -13,10 +13,11 @@ enum Fixtures {
     }
 
     /// A PDF with one page per string, each page showing its string.
-    /// `size` is the page size in points (A4 portrait by default).
+    /// `size` is the page size in points (A4 portrait by default); the text
+    /// is set in `font`.
     @discardableResult
     static func pdf(at url: URL, pages: [String], size: CGSize = CGSize(width: 595, height: 842),
-                    password: String? = nil) throws -> URL {
+                    password: String? = nil, font: NSFont = .systemFont(ofSize: 18)) throws -> URL {
         var box = CGRect(origin: .zero, size: size)
         var info: [CFString: Any] = [kCGPDFContextTitle: "Fixture"]
         if let password {
@@ -30,7 +31,7 @@ enum Fixtures {
         }
         for text in pages {
             context.beginPDFPage(nil)
-            let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 18)]))
+            let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: font]))
             context.textPosition = CGPoint(x: 60, y: size.height - 100)
             CTLineDraw(line, context)
             context.endPDFPage()

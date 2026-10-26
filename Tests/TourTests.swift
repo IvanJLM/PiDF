@@ -50,6 +50,21 @@ final class TourTests: XCTestCase {
         first.showGoToPage(nil)
         await shoot(window, "6-go-to-page", into: folder)
         if let sheet = window.attachedSheet { window.endSheet(sheet) }
+        let page = try XCTUnwrap(first.pdf?.page(at: 0))
+        if let fox = first.pdf?.findString("quick brown fox", withOptions: []).first(where: { $0.pages.first === page }) {
+            first.pdfView.setCurrentSelection(fox, animate: false)
+        }
+        first.toggleHighlight(nil)
+        first.add(note: "Esto es una prueba de Nota", at: NSPoint(x: 60, y: 722), on: page)
+        first.add(note: "Golden Rules first: fly, navigate, communicate. The PF trims until the AP can be engaged.\nSEC F-PLN for the EOSID of the day.",
+                  at: NSPoint(x: 300, y: 660), on: page)
+        first.add(note: "A small note in Times", at: NSPoint(x: 60, y: 560), on: page, font: NSFont(name: "TimesNewRomanPSMT", size: 9))
+        await shoot(window, "8-marks-selected", into: folder)
+        first.addNote(nil)
+        await shoot(window, "9-edit-note", into: folder)
+        if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .alertSecondButtonReturn) }
+        first.pdfView.select(nil)
+        await shoot(window, "10-marks", into: folder)
         let locked = try Fixtures.pdf(at: tmp.appendingPathComponent("Locked.pdf"), pages: ["Secret"], password: "fixture-pw")
         let lockedController = app.open([locked], nextTo: nil)[0]
         await shoot(try XCTUnwrap(lockedController.window), "7-password", into: folder)
