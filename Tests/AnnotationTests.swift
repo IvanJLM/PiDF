@@ -171,74 +171,95 @@ final class AnnotationTests: XCTestCase {
         XCTAssertTrue(controller.hasUnsavedAnnotations)
     }
 
-    // MARK: Note size and lines
+    // MARK: Note type and lines
 
-    func testNoteTakesTheSizeOfThePagesText() throws {
-        let (controller, _) = try open()  // pages set in 18-point type
+    func testNoteTakesTheTypeOfThePagesText() throws {
+        let folder = try Fixtures.folder(self)
+        let url = try Fixtures.pdf(at: folder.appendingPathComponent("times.pdf"), pages: ["set in Times, like the document"],
+                                   font: try XCTUnwrap(NSFont(name: "TimesNewRomanPSMT", size: 13)))
+        let controller = app.open([url], nextTo: nil)[0]
         let page = try XCTUnwrap(controller.pdf?.page(at: 0))
-        XCTAssertEqual(Marks.textSize(on: page), 18)
-        let note = controller.add(note: "sized", at: NSPoint(x: 100, y: 500), on: page)
-        XCTAssertEqual(note.font?.pointSize, 18)
-        XCTAssertEqual(note.bounds.height, Marks.lineHeight(size: 18) + 2 * Marks.textInset)
+        let note = controller.add(note: "typed", at: NSPoint(x: 100, y: 500), on: page)
+        XCTAssertEqual(note.font?.fontName, "TimesNewRomanPSMT", "the document's typeface")
+        XCTAssertEqual(note.font?.pointSize, 13, "and size")
 
-        controller.replace(note, with: "edited, same size")
-        XCTAssertEqual(notes(on: page).first?.font?.pointSize, 18, "an edit keeps the note's size")
+        controller.replace(note, with: "edited, same type")
+        XCTAssertEqual(notes(on: page).first?.font?.fontName, "TimesNewRomanPSMT", "an edit keeps the note's type")
+        XCTAssertEqual(notes(on: page).first?.font?.pointSize, 13)
+    }
+
+    func testPrivateOrMissingTypefacesBecomeHelvetica() throws {
+        let (controller, _) = try open()  // set in the system font, at 18 points
+        let page = try XCTUnwrap(controller.pdf?.page(at: 0))
+        XCTAssertEqual(Marks.textFont(on: page).fontName, "Helvetica")
+        XCTAssertEqual(Marks.textFont(on: page).pointSize, 18)
     }
 
     func testPageWithoutTextGetsASizeForItsWidth() {
         let a4 = PDFPage()
         a4.setBounds(NSRect(x: 0, y: 0, width: 595, height: 842), for: .mediaBox)
-        XCTAssertEqual(Marks.textSize(on: a4), 11)
+        XCTAssertEqual(Marks.textFont(on: a4).pointSize, 11)
+        XCTAssertEqual(Marks.textFont(on: a4).fontName, "Helvetica")
         let slide = PDFPage()
         slide.setBounds(NSRect(x: 0, y: 0, width: 960, height: 540), for: .mediaBox)
-        XCTAssertEqual(Marks.textSize(on: slide), 18)
+        XCTAssertEqual(Marks.textFont(on: slide).pointSize, 18)
     }
 
     func testLongNotesWrapAndKeepTheirLines() throws {
         let box = NSRect(x: 0, y: 0, width: 595, height: 842)
-        let two = Marks.note("first line\nsecond line", size: 11, topLeft: NSPoint(x: 100, y: 500), in: box)
-        XCTAssertEqual(two.bounds.height, 2 * Marks.lineHeight(size: 11) + 2 * Marks.textInset, "a typed new line is a line")
+        let font = Marks.helvetica(size: 11)
+        let one = Marks.note("first line", font: font, topLeft: NSPoint(x: 100, y: 500), in: box)
+        let two = Marks.note("first line\nsecond line", font: font, topLeft: NSPoint(x: 100, y: 500), in: box)
+        XCTAssertGreaterThan(two.bounds.height - one.bounds.height, 10, "a typed new line is a line")
         XCTAssertEqual(two.contents, "first line\nsecond line")
+        XCTAssertEqual(two.bounds.maxY, 500, "its top where it was put")
 
         let long = String(repeating: "Golden Rules first: fly, navigate, communicate. ", count: 6)
-        let wrapped = Marks.note(long, size: 11, topLeft: NSPoint(x: 300, y: 500), in: box)
+        let wrapped = Marks.note(long, font: font, topLeft: NSPoint(x: 300, y: 500), in: box)
         XCTAssertLessThanOrEqual(wrapped.bounds.maxX, box.maxX - Marks.margin + 0.01, "up to the right margin")
         XCTAssertEqual(wrapped.bounds.minX, 300, "from the point")
-        XCTAssertGreaterThan(wrapped.bounds.height, 4 * Marks.lineHeight(size: 11), "and down as long as it takes")
+        XCTAssertGreaterThan(wrapped.bounds.height, 4 * one.bounds.height, "and down as long as it takes")
     }
 
-    /// PDFKit draws the note's text where PiDF counted it: nothing below
-    /// the yellow box. Rendered in a far taller note of the same width.
+    /// Where PDFKit draws `text` in `font`, in a note `width` wide and far
+    /// taller than needed: the top and bottom of its ink, below the top edge.
+    private func ink(of text: String, font: NSFont, width: CGFloat, height: CGFloat) throws -> (top: CGFloat, bottom: CGFloat) {
+        let tall = PDFAnnotation(bounds: NSRect(x: 0, y: 0, width: width, height: height), forType: .freeText, withProperties: nil)
+        tall.contents = text
+        tall.font = font
+        tall.fontColor = .black
+        tall.backgroundColor = .white
+        tall.border = PDFBorder()
+        tall.border?.lineWidth = 0
+        let page = PDFPage()
+        page.setBounds(tall.bounds, for: .mediaBox)
+        page.addAnnotation(tall)
+        let scale: CGFloat = 3
+        let rep = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(width * scale), pixelsHigh: Int(height * scale),
+                                                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: rep)).cgContext
+        context.setFillColor(.white)
+        context.fill(CGRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh))
+        context.scaleBy(x: scale, y: scale)
+        page.draw(with: .mediaBox, to: context)
+        let inked = (0..<rep.pixelsHigh).filter { y in (0..<rep.pixelsWide).contains { (rep.colorAt(x: $0, y: y)?.redComponent ?? 1) < 0.5 } }
+        return (CGFloat(try XCTUnwrap(inked.first)) / scale, CGFloat(try XCTUnwrap(inked.last) + 1) / scale)
+    }
+
+    /// Each typeface spaces its lines its own way: whatever the type and
+    /// size, the text sits inside the yellow with as much room below as above.
     func testNoteTextFitsItsBox() throws {
         let text = "Golden Rules first: fly, navigate, communicate. The PF trims until the AP can be engaged.\nSEC F-PLN for the EOSID of the day; ATC before ECAM actions, with no fire or severe damage."
-        for size: CGFloat in [7, 11, 18] {
-            let box = NSRect(x: 0, y: 0, width: 595, height: 842)
-            let note = Marks.note(text, size: size, topLeft: NSPoint(x: 200, y: 800), in: box)
-            let tall = PDFAnnotation(bounds: NSRect(x: 0, y: 0, width: note.bounds.width, height: note.bounds.height + 200),
-                                     forType: .freeText, withProperties: nil)
-            tall.contents = text
-            tall.font = note.font
-            tall.fontColor = .black
-            tall.backgroundColor = .white
-            tall.border = PDFBorder()
-            tall.border?.lineWidth = 0
-            let page = PDFPage()
-            page.setBounds(tall.bounds, for: .mediaBox)
-            page.addAnnotation(tall)
-            let scale: CGFloat = 3
-            let rep = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(tall.bounds.width * scale), pixelsHigh: Int(tall.bounds.height * scale),
-                                                     bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                                     colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
-            let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: rep)).cgContext
-            context.setFillColor(.white)
-            context.fill(CGRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh))
-            context.scaleBy(x: scale, y: scale)
-            page.draw(with: .mediaBox, to: context)
-            var lowest = 0
-            for y in 0..<rep.pixelsHigh where (0..<rep.pixelsWide).contains(where: { (rep.colorAt(x: $0, y: y)?.redComponent ?? 1) < 0.5 }) { lowest = y }
-            let inkBottom = CGFloat(lowest + 1) / scale
-            XCTAssertLessThanOrEqual(inkBottom, note.bounds.height, "\(size)-point text inside its note")
-            XCTAssertGreaterThan(inkBottom, note.bounds.height - Marks.lineHeight(size: size) - Marks.textInset, "\(size)-point: no empty line at the end")
+        let box = NSRect(x: 0, y: 0, width: 595, height: 842)
+        for name in ["Helvetica", "TimesNewRomanPSMT", "AvenirNext-Regular"] {
+            for size: CGFloat in [6.5, 7, 11, 11.5, 18] {
+                let font = try XCTUnwrap(NSFont(name: name, size: size))
+                let note = Marks.note(text, font: font, topLeft: NSPoint(x: 200, y: 800), in: box)
+                let ink = try ink(of: text, font: font, width: note.bounds.width, height: note.bounds.height + 200)
+                XCTAssertLessThanOrEqual(ink.bottom, note.bounds.height, "\(name) \(size): the text inside its note")
+                XCTAssertEqual(note.bounds.height - ink.bottom, ink.top, accuracy: 1, "\(name) \(size): room below as above")
+            }
         }
     }
 

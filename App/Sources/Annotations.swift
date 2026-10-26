@@ -13,33 +13,78 @@ enum Marks {
     static let margin: CGFloat = 12
     /// A note's text size on a page without text, for an A4 page.
     static let defaultSize: CGFloat = 11
+    /// PDFKit draws a note's text 2 points in from each side.
+    static let textInset: CGFloat = 2
 
-    /// Helvetica is one of the fonts every PDF viewer has.
-    static func font(size: CGFloat) -> NSFont {
+    /// Helvetica, at `size`: one of the fonts every PDF viewer has.
+    static func helvetica(size: CGFloat) -> NSFont {
         NSFont(name: "Helvetica", size: size) ?? .systemFont(ofSize: size)
     }
 
-    // How PDFKit lays out a note's text (measured on macOS 26): 2 points in
-    // from each side and from the top, wrapped at spaces, one line every
-    // ceil(1.05 × size) points.
-    static let textInset: CGFloat = 2
-    static func lineHeight(size: CGFloat) -> CGFloat { ceil(size * 1.05) }
-
-    /// The size most of `page`'s text is set in, so a note reads like the
-    /// document: small in a dense manual, larger in slides. A page without
-    /// text (a scan) gets 11 points scaled to its width.
-    static func textSize(on page: PDFPage) -> CGFloat {
-        let width = page.bounds(for: .cropBox).width
-        let fallback = (defaultSize * width / 595).rounded()
-        guard let text = page.attributedString, text.length > 0 else { return min(max(fallback, 6), 30) }
-        var characters: [CGFloat: Int] = [:]
+    /// The type most of `page`'s text is set in, so a note reads like the
+    /// document: its typeface when it is installed on this Mac (Helvetica
+    /// otherwise), and its size, small in a dense manual, larger in slides.
+    /// A page without text (a scan) gets 11-point Helvetica scaled to its
+    /// width. PDFKit embeds the typeface in the note, so the note looks the
+    /// same on a Mac without it.
+    static func textFont(on page: PDFPage) -> NSFont {
+        let fallback = helvetica(size: min(max((defaultSize * page.bounds(for: .cropBox).width / 595).rounded(), 6), 30))
+        guard let text = page.attributedString, text.length > 0 else { return fallback }
+        struct Style: Hashable { let name: String; let size: CGFloat }
+        var characters: [Style: Int] = [:]
         text.enumerateAttribute(.font, in: NSRange(location: 0, length: text.length)) { value, range, _ in
             guard let font = value as? NSFont, font.pointSize >= 3 else { return }
-            let size = (font.pointSize * 2).rounded() / 2
-            characters[size, default: 0] += range.length
+            characters[Style(name: font.fontName, size: (font.pointSize * 2).rounded() / 2), default: 0] += range.length
         }
-        guard let size = characters.max(by: { $0.value < $1.value })?.key else { return min(max(fallback, 6), 30) }
-        return min(max(size, 5), 30)
+        guard let style = characters.max(by: { $0.value < $1.value })?.key else { return fallback }
+        let size = min(max(style.size, 5), 30)
+        // Only a typeface the page really uses: PDFKit names a stand-in
+        // (Times) for one this Mac lacks. And only one that is installed,
+        // under that very name.
+        if typefaces(of: page).contains(style.name), let font = NSFont(name: style.name, size: size), font.fontName == style.name {
+            return font
+        }
+        return helvetica(size: size)
+    }
+
+    /// The names of the typefaces `page` uses, from its fonts and those of
+    /// the forms it draws, without the "ABCDEF+" of an embedded subset.
+    static func typefaces(of page: PDFPage) -> Set<String> {
+        guard let resources = page.pageRef?.dictionary.flatMap({ dictionary($0, "Resources") }) else { return [] }
+        var names = Set<String>()
+        func collect(_ resources: CGPDFDictionaryRef) {
+            guard let fonts = dictionary(resources, "Font") else { return }
+            CGPDFDictionaryApplyBlock(fonts, { _, object, _ in
+                var font: CGPDFDictionaryRef?
+                var name: UnsafePointer<CChar>?
+                if CGPDFObjectGetValue(object, .dictionary, &font), let font, CGPDFDictionaryGetName(font, "BaseFont", &name), let name {
+                    var typeface = String(cString: name)
+                    if let plus = typeface.firstIndex(of: "+"), typeface.distance(from: typeface.startIndex, to: plus) == 6 {
+                        typeface = String(typeface[typeface.index(after: plus)...])
+                    }
+                    names.insert(typeface)
+                    names.insert(typeface.replacingOccurrences(of: "-Identity-H", with: ""))
+                }
+                return true
+            }, nil)
+        }
+        collect(resources)
+        if let forms = dictionary(resources, "XObject") {
+            CGPDFDictionaryApplyBlock(forms, { _, object, _ in
+                var stream: CGPDFStreamRef?
+                if CGPDFObjectGetValue(object, .stream, &stream), let stream, let form = CGPDFStreamGetDictionary(stream),
+                   let inner = dictionary(form, "Resources") {
+                    collect(inner)
+                }
+                return true
+            }, nil)
+        }
+        return names
+    }
+
+    private static func dictionary(_ parent: CGPDFDictionaryRef, _ key: String) -> CGPDFDictionaryRef? {
+        var child: CGPDFDictionaryRef?
+        return CGPDFDictionaryGetDictionary(parent, key, &child) ? child : nil
     }
 
     private static func width(of text: String, _ font: NSFont) -> CGFloat {
@@ -97,16 +142,15 @@ enum Marks {
         return annotation
     }
 
-    /// A note saying `text` in `size`-point type, its top left corner at
-    /// `topLeft` on a page whose box is `box`. As wide as its text, up to
-    /// the page's right margin; longer text wraps and the note grows down.
-    static func note(_ text: String, size: CGFloat, topLeft: NSPoint, in box: NSRect) -> PDFAnnotation {
-        let font = font(size: size)
+    /// A note saying `text` in `font`, its top left corner at `topLeft` on
+    /// a page whose box is `box`. As wide as its text, up to the page's
+    /// right margin; longer text wraps and the note grows down.
+    static func note(_ text: String, font: NSFont, topLeft: NSPoint, in box: NSRect) -> PDFAnnotation {
         let room = box.insetBy(dx: margin, dy: margin)
         let slack = 2 * textInset + 0.5
         // From the point to the margin, but never narrower than about
         // fifteen words' worth (the note then moves left), nor than a word.
-        var limit = max(room.maxX - topLeft.x, min(room.width, size * 16)) - slack
+        var limit = max(room.maxX - topLeft.x, min(room.width, font.pointSize * 16)) - slack
         let longestWord = text.components(separatedBy: .whitespacesAndNewlines).map { width(of: $0, font) }.max() ?? 0
         limit = max(limit, longestWord)
         let lines = lines(of: text, font: font, width: limit)
@@ -114,9 +158,7 @@ enum Marks {
         // PDFKit has no more room than `limit` on a line, so it never fits
         // more on one than counted here, and never wraps sooner.
         let noteWidth = min(ceil(widest + slack), limit + slack)
-        let noteHeight = CGFloat(lines.count) * lineHeight(size: size) + 2 * textInset
-        let frame = NSRect(x: topLeft.x, y: topLeft.y - noteHeight, width: noteWidth, height: noteHeight).kept(in: room)
-        let annotation = PDFAnnotation(bounds: frame, forType: .freeText, withProperties: nil)
+        let annotation = PDFAnnotation(bounds: NSRect(x: 0, y: 0, width: noteWidth, height: 10), forType: .freeText, withProperties: nil)
         annotation.contents = text
         annotation.font = font
         annotation.fontColor = .black
@@ -125,7 +167,52 @@ enum Marks {
         annotation.border = PDFBorder()
         annotation.border?.lineWidth = 0
         annotation.userName = NSFullUserName()
+        // As tall as PDFKit draws the text, with as much room below it as
+        // above: each typeface spaces its lines its own way.
+        var trial = CGFloat(lines.count + 2) * font.pointSize * 2
+        var height = trial
+        for _ in 0..<3 {
+            guard let ink = inkRows(of: annotation, height: trial) else { break }
+            height = ink.bottom + ink.top
+            // Text reaching the bottom of the trial box may go on below it.
+            if ink.bottom < trial - font.pointSize * 2 { break }
+            trial *= 2
+        }
+        annotation.bounds = NSRect(x: topLeft.x, y: topLeft.y - height, width: noteWidth, height: height).kept(in: room)
         return annotation
+    }
+
+    /// Where the text of `note` starts and ends below its top edge, drawn
+    /// by PDFKit in a box `height` points tall, to a quarter of a point. A
+    /// small grey bitmap, once per note made or edited.
+    static func inkRows(of note: PDFAnnotation, height: CGFloat) -> (top: CGFloat, bottom: CGFloat)? {
+        let scale: CGFloat = 4
+        let size = NSSize(width: note.bounds.width, height: height)
+        let page = PDFPage()
+        page.setBounds(NSRect(origin: .zero, size: size), for: .mediaBox)
+        note.bounds = NSRect(origin: .zero, size: size)
+        page.addAnnotation(note)
+        defer { page.removeAnnotation(note) }
+        guard let context = CGContext(data: nil, width: Int(ceil(size.width * scale)), height: Int(ceil(size.height * scale)),
+                                      bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(),
+                                      bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
+        context.setFillColor(gray: 1, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: context.width, height: context.height))
+        context.scaleBy(x: scale, y: scale)
+        page.draw(with: .mediaBox, to: context)
+        guard let data = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        // Row 0 of the bitmap's memory is its top edge. The yellow is light
+        // grey here; the text is black.
+        var first: Int?, last: Int?
+        for row in 0..<context.height {
+            let line = data + row * context.bytesPerRow
+            if (0..<context.width).contains(where: { line[$0] < 128 }) {
+                if first == nil { first = row }
+                last = row
+            }
+        }
+        guard let first, let last else { return nil }
+        return (CGFloat(first) / scale, CGFloat(last + 1) / scale)
     }
 }
 

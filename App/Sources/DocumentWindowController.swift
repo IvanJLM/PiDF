@@ -589,11 +589,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     /// Puts a note saying `text` on `page`, its top left corner at `point`,
-    /// in `size`-point type (the size of the page's text when not given).
+    /// in `font` (the type of the page's text when not given).
     @discardableResult
-    func add(note text: String, at point: NSPoint, on page: PDFPage, size: CGFloat? = nil) -> PDFAnnotation {
-        let size = size ?? Marks.textSize(on: page)
-        let note = Marks.note(text, size: size, topLeft: point, in: page.bounds(for: .cropBox))
+    func add(note text: String, at point: NSPoint, on page: PDFPage, font: NSFont? = nil) -> PDFAnnotation {
+        let note = Marks.note(text, font: font ?? Marks.textFont(on: page), topLeft: point, in: page.bounds(for: .cropBox))
         page.addAnnotation(note)
         pdfView.select(note)
         annotationsChanged()
@@ -608,18 +607,18 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     /// A note with new text is a new annotation, in the same place and
-    /// size: PDFKit goes on drawing the saved look of one whose text
+    /// type: PDFKit goes on drawing the saved look of one whose text
     /// changed. Empty text removes the note.
     func replace(_ note: PDFAnnotation, with text: String) {
         guard let page = note.page else { return }
         let topLeft = NSPoint(x: note.bounds.minX, y: note.bounds.maxY)
-        let size = note.font?.pointSize
+        let font = note.font
         pdfView.select(nil)
         page.removeAnnotation(note)
         if text.isEmpty {
             annotationsChanged()
         } else {
-            add(note: text, at: topLeft, on: page, size: size)
+            add(note: text, at: topLeft, on: page, font: font)
         }
     }
 

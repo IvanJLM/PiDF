@@ -3,12 +3,15 @@
 ## 1.3.0 — 2026-10-26
 
 - Highlight (⌃H) and notes (⌃N), in one yellow. ⌃H highlights the selected
-  text, or removes the highlights under it. ⌃N puts a note where the pointer
-  is, in the size most of the page's text is set in; a click selects a
-  note, a drag moves it, a double click or ⌃N edits it, Delete removes it.
-  A note is written in a box of several lines (⌥Return for a new line) and
-  wraps on the page up to the right margin. Both are ordinary PDF annotations: they travel with
-  the file and show in Preview or any other viewer.
+  text, or removes the highlights under it. ⌃N puts a note where the
+  pointer is, in the typeface and size most of the page's text is set in
+  (the typeface when it is installed on the Mac, Helvetica otherwise;
+  PDFKit embeds it in the note, so it looks the same on any Mac). A click
+  selects a note, a drag moves it, a double click or ⌃N edits it, Delete
+  removes it. A note is written in a box of several lines (⌥Return for a
+  new line) and wraps on the page up to the right margin. Both are ordinary
+  PDF annotations: they travel with the file and show in Preview or any
+  other viewer.
 - The marks are written into the file itself, in one piece, on ⌘S, when the
   tab goes behind another one, when it closes and when PiDF quits. A long
   manual (1,600 pages) takes seconds to write, so a tab in the background
