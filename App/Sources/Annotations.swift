@@ -6,8 +6,9 @@ import PDFKit
 /// ordinary PDF annotations, so they travel with the file and show in
 /// Preview or any other viewer.
 enum Marks {
-    /// The yellow of a highlight and of a note's background.
-    static let yellow = NSColor(srgbRed: 0.973, green: 0.906, blue: 0.463, alpha: 1)
+    /// The yellow of a highlight and of a note's background: #FFE34D, the
+    /// highlight yellow of the user's own training documents.
+    static let yellow = NSColor(srgbRed: 1, green: 0xE3 / 255.0, blue: 0x4D / 255.0, alpha: 1)
     /// How close to the page edge a note can go.
     static let margin: CGFloat = 12
     /// A note's text size on a page without text, for an A4 page.

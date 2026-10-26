@@ -68,6 +68,20 @@ final class AnnotationTests: XCTestCase {
         XCTAssertTrue(highlights(on: page).isEmpty)
     }
 
+    func testOneYellowForBoth() throws {
+        let (controller, _) = try open()
+        let page = try XCTUnwrap(controller.pdf?.page(at: 0))
+        try select("first", in: controller)
+        controller.toggleHighlight(nil)
+        let note = controller.add(note: "yellow", at: NSPoint(x: 100, y: 500), on: page)
+        let hex = { (color: NSColor?) -> String? in
+            color?.usingColorSpace(.sRGB).map { String(format: "%02X%02X%02X", Int(($0.redComponent * 255).rounded()),
+                                                      Int(($0.greenComponent * 255).rounded()), Int(($0.blueComponent * 255).rounded())) }
+        }
+        XCTAssertEqual(hex(highlights(on: page).first?.color), "FFE34D")
+        XCTAssertEqual(hex(note.backgroundColor), "FFE34D")
+    }
+
     func testHighlightKeepsEachLine() {
         let lines = [NSRect(x: 60, y: 700, width: 400, height: 12), NSRect(x: 60, y: 688, width: 150, height: 12)]
         let highlight = Marks.highlight(lines: lines)
