@@ -7,6 +7,16 @@ final class DocumentWindow: NSWindow {
     /// before PDFKit's own views see the key, so it works wherever the click
     /// left the focus, except while typing in a text field.
     override func sendEvent(_ event: NSEvent) {
+        // A click on a note, and the drag that may follow, are the note's
+        // (select, move, edit), not PDFKit's.
+        if let controller = windowController as? DocumentWindowController {
+            switch event.type {
+            case .leftMouseDown where controller.pdfView.handleClick(event): return
+            case .leftMouseDragged where controller.pdfView.handleDrag(event): return
+            case .leftMouseUp where controller.pdfView.handleRelease(event): return
+            default: break
+            }
+        }
         if event.type == .keyDown, !(firstResponder is NSText),
            event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
            let controller = windowController as? DocumentWindowController,
@@ -18,6 +28,8 @@ final class DocumentWindow: NSWindow {
             case NSRightArrowFunctionKey:
                 controller.goToNextPage(nil)
                 return
+            case 0x7F, NSDeleteFunctionKey:  // Delete, forward delete
+                if controller.deleteSelectedNote() { return }
             default:
                 break
             }
@@ -27,13 +39,17 @@ final class DocumentWindow: NSWindow {
 }
 
 /// One document, in its own window or as one tab of a window.
+///
+/// Highlights and notes are made in the document's own PDFAnnotations and
+/// written back into the file: on ⌘S, when the tab goes behind another one,
+/// when it closes and when PiDF quits.
 @MainActor
 final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
     static let tabbingIdentifier = "PiDF"
     private static let twoPagesKey = "TwoPages"
 
     let url: URL
-    let pdfView = PDFView(frame: NSRect(x: 0, y: 0, width: 640, height: 820))
+    let pdfView = AnnotatedPDFView(frame: NSRect(x: 0, y: 0, width: 640, height: 820))
     private(set) var chrome: WindowChrome!
     private(set) var findBar: FindBar?
     private var watcher: FileWatcher?
@@ -88,6 +104,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             self.onDrop?(urls, window)
         }
         chrome = WindowChrome(window: window)
+        pdfView.onNoteMoved = { [weak self] in self?.annotationsChanged() }
+        pdfView.onNoteDoubleClicked = { [weak self] note in self?.editNote(note) }
         pageObserver = NotificationCenter.default.addObserver(forName: .PDFViewPageChanged, object: pdfView, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.updatePageNumber() }
         }
@@ -229,6 +247,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         rememberPosition()  // kept even if the app never gets to quit normally
         pdfView.document = nil
         Self.returnFreedMemory()
+        saveAnnotationsInBackground()
     }
 
     /// PDFKit frees what it decoded to draw the pages (in the background,
@@ -244,6 +263,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private static var reliefTask: DispatchWorkItem?
 
     func unpark() {
+        guard parked != nil else { return }
+        waitForBackgroundSave()  // never shown while another thread writes it
         guard let saved = parked else { return }
         parked = nil
         show(saved.document)
@@ -377,8 +398,21 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     // MARK: Window
 
+    /// ⌘W, the tab's close button: the marks go into the file first.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if saveAnnotations(showingResult: false) { return true }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "The highlights and notes couldn’t be saved in “\(url.lastPathComponent)”."
+        alert.informativeText = "Closing loses them."
+        alert.addButton(withTitle: "Close Anyway")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
     func windowWillClose(_ notification: Notification) {
         isClosed = true
+        waitForBackgroundSave()
         rememberPosition()
         chrome.stop()
         watcher?.stop()
@@ -491,9 +525,265 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         window?.makeFirstResponder(pdfView)
     }
 
-    /// Esc in the document closes the find bar.
+    /// Esc in the document lets a note go, then closes the find bar.
     override func cancelOperation(_ sender: Any?) {
-        if findBar != nil { closeFind(sender) }
+        if pdfView.selectedNote != nil {
+            pdfView.select(nil)
+        } else if findBar != nil {
+            closeFind(sender)
+        }
+    }
+
+    // MARK: Highlights and notes
+
+    /// Marks can be made while the document is on screen, not protected,
+    /// and in a file PiDF can write back. A protected document would be
+    /// written without its protection.
+    var canAnnotate: Bool {
+        guard parked == nil, let document = pdfView.document, !document.isLocked, !document.isEncrypted else { return false }
+        return FileManager.default.isWritableFile(atPath: url.path)
+    }
+
+    /// The highlights under the lines of `selection`, with their pages.
+    private func highlights(under selection: PDFSelection) -> [(PDFPage, PDFAnnotation)] {
+        let lines = selection.selectionsByLine()
+        return selection.pages.flatMap { page -> [(PDFPage, PDFAnnotation)] in
+            // The middle of each line, so a line next to a highlight doesn't count.
+            let rects = lines.filter { $0.pages.contains(page) }.map { $0.bounds(for: page) }.map { $0.insetBy(dx: 0, dy: $0.height / 4) }
+            return page.annotations
+                .filter { annotation in Marks.isHighlight(annotation) && Marks.rects(of: annotation).contains { rect in rects.contains { $0.intersects(rect) } } }
+                .map { (page, $0) }
+        }
+    }
+
+    /// ⌃H: highlights the selected text, or removes the highlights under it.
+    @objc func toggleHighlight(_ sender: Any?) {
+        guard canAnnotate, let selection = pdfView.currentSelection, !selection.pages.isEmpty else { return }
+        let under = highlights(under: selection)
+        if !under.isEmpty {
+            for (page, annotation) in under { page.removeAnnotation(annotation) }
+        } else {
+            let lines = selection.selectionsByLine()
+            for page in selection.pages {
+                let rects = lines.filter { $0.pages.contains(page) }.map { $0.bounds(for: page) }
+                if !rects.isEmpty { page.addAnnotation(Marks.highlight(lines: rects)) }
+            }
+            pdfView.clearSelection()
+        }
+        annotationsChanged()
+    }
+
+    /// ⌃N: a note where the pointer is (or in the middle of the window when
+    /// the pointer is elsewhere); with a note selected, edits it.
+    @objc func addNote(_ sender: Any?) {
+        guard canAnnotate else { return }
+        if let note = pdfView.selectedNote { return editNote(note) }
+        var inView = pdfView.convert(window?.mouseLocationOutsideOfEventStream ?? .zero, from: nil)
+        if !pdfView.bounds.contains(inView) { inView = NSPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY) }
+        guard let page = pdfView.page(for: inView, nearest: true) else { return }
+        let inPage = pdfView.convert(inView, to: page)
+        askForNoteText(initial: "") { [weak self] text in
+            guard let self, let text, !text.isEmpty else { return }
+            self.add(note: text, at: inPage, on: page)
+        }
+    }
+
+    /// Puts a note saying `text` on `page`, its top left corner at `point`.
+    @discardableResult
+    func add(note text: String, at point: NSPoint, on page: PDFPage) -> PDFAnnotation {
+        let note = Marks.note(text, topLeft: point, in: page.bounds(for: .cropBox))
+        page.addAnnotation(note)
+        pdfView.select(note)
+        annotationsChanged()
+        return note
+    }
+
+    func editNote(_ note: PDFAnnotation) {
+        askForNoteText(initial: note.contents ?? "") { [weak self] text in
+            guard let self, let text else { return }
+            self.replace(note, with: text)
+        }
+    }
+
+    /// A note with new text is a new annotation, in the same place: PDFKit
+    /// goes on drawing the saved look of one whose text changed. Empty text
+    /// removes the note.
+    func replace(_ note: PDFAnnotation, with text: String) {
+        guard let page = note.page else { return }
+        let topLeft = NSPoint(x: note.bounds.minX, y: note.bounds.maxY)
+        pdfView.select(nil)
+        page.removeAnnotation(note)
+        if text.isEmpty {
+            annotationsChanged()
+        } else {
+            add(note: text, at: topLeft, on: page)
+        }
+    }
+
+    /// Delete with a note selected; false when there was none.
+    @discardableResult
+    func deleteSelectedNote() -> Bool {
+        guard let note = pdfView.selectedNote, let page = note.page else { return false }
+        pdfView.select(nil)
+        page.removeAnnotation(note)
+        annotationsChanged()
+        return true
+    }
+
+    private func askForNoteText(initial: String, completion: @escaping (String?) -> Void) {
+        guard let window else { return }
+        let alert = NSAlert()
+        alert.messageText = initial.isEmpty ? "Add Note" : "Edit Note"
+        alert.addButton(withTitle: initial.isEmpty ? "Add" : "Save")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        field.stringValue = initial
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { response in
+            MainActor.assumeIsolated {
+                guard response == .alertFirstButtonReturn else { return completion(nil) }
+                completion(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        }
+    }
+
+    // MARK: Saving the marks into the file
+
+    /// How many marks have been made and how many the file has, so a save
+    /// knows which state it wrote.
+    private var changeCount = 0
+    private var savedChangeCount = 0
+    var hasUnsavedAnnotations: Bool { changeCount != savedChangeCount }
+    /// A write running on another thread while the tab is in the background.
+    private var saveInFlight: SaveInFlight?
+
+    /// Hands the document to the writing thread and brings the result back;
+    /// nothing else touches it meanwhile (see waitForBackgroundSave).
+    private final class SaveInFlight: @unchecked Sendable {
+        let group = DispatchGroup()
+        let version: Int
+        let document: PDFDocument
+        var fresh: PDFDocument?
+        init(version: Int, document: PDFDocument) {
+            self.version = version
+            self.document = document
+        }
+    }
+
+    private func annotationsChanged() {
+        changeCount += 1
+        window?.isDocumentEdited = true
+    }
+
+    /// Writes the marks into the file now, on this thread (⌘S, closing,
+    /// quitting), and shows the file as written unless the window is going
+    /// anyway. False if the file couldn't be written.
+    @discardableResult
+    func saveAnnotations(showingResult: Bool = true) -> Bool {
+        waitForBackgroundSave()
+        guard hasUnsavedAnnotations else { return true }
+        guard let document = pdf else { return false }
+        let version = changeCount
+        watcher?.expectOwnChange()
+        guard let fresh = Self.write(document, to: url) else {
+            watcher?.cancelExpectedChange()
+            return false
+        }
+        savedChangeCount = version
+        window?.isDocumentEdited = false
+        if showingResult { replace(with: fresh) }
+        return true
+    }
+
+    @objc func saveDocument(_ sender: Any?) {
+        guard !saveAnnotations(), let window else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "The highlights and notes couldn’t be saved in “\(url.lastPathComponent)”."
+        alert.informativeText = "Check that the file can be written, then save again."
+        alert.beginSheetModal(for: window)
+    }
+
+    /// The tab went to the background and its document is off screen: the
+    /// write (seconds, for a long manual) runs on another thread.
+    private func saveAnnotationsInBackground() {
+        guard saveInFlight == nil, hasUnsavedAnnotations, let document = parked?.document else { return }
+        let save = SaveInFlight(version: changeCount, document: document)
+        saveInFlight = save
+        watcher?.expectOwnChange()
+        let url = self.url
+        save.group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            save.fresh = Self.write(save.document, to: url)
+            save.group.leave()
+            DispatchQueue.main.async { MainActor.assumeIsolated { self.finish(save) } }
+        }
+    }
+
+    private func finish(_ save: SaveInFlight) {
+        guard saveInFlight === save else { return }
+        saveInFlight = nil
+        guard let fresh = save.fresh else {
+            watcher?.cancelExpectedChange()
+            return
+        }
+        savedChangeCount = save.version
+        window?.isDocumentEdited = hasUnsavedAnnotations
+        // Marks made since the write began stay in the document shown; the
+        // next save writes them.
+        if !hasUnsavedAnnotations { replace(with: fresh) }
+    }
+
+    /// Nothing touches the document while another thread writes it.
+    private func waitForBackgroundSave() {
+        guard let save = saveInFlight else { return }
+        save.group.wait()
+        finish(save)
+    }
+
+    /// Writes `document` to a temporary file on the same volume and puts it
+    /// in the place of `url`, so a failure leaves the original as it was.
+    /// Returns the written file opened again: PDFKit keeps a document's
+    /// every object in memory once it has written it, a fresh one is lazy.
+    nonisolated static func write(_ document: PDFDocument, to url: URL) -> PDFDocument? {
+        let manager = FileManager.default
+        guard let folder = try? manager.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: url, create: true) else {
+            return nil
+        }
+        defer { try? manager.removeItem(at: folder) }
+        let temporary = folder.appendingPathComponent(url.lastPathComponent)
+        guard document.write(to: temporary), (try? manager.replaceItemAt(url, withItemAt: temporary)) != nil else { return nil }
+        return PDFDocument(url: url)
+    }
+
+    /// Shows `fresh`, the same document read again from disk, where the
+    /// current one is, at the same spot and zoom.
+    private func replace(with fresh: PDFDocument) {
+        pdfView.select(nil)
+        if parked != nil {
+            if let old = parked?.destination, let page = old.page, let document = page.document,
+               let samePage = fresh.page(at: document.index(for: page)) {
+                parked?.destination = PDFDestination(page: samePage, at: old.point)
+            } else {
+                parked?.destination = nil
+            }
+            parked?.document = fresh
+            return
+        }
+        let index = pageIndex
+        let point = pdfView.currentDestination?.point
+        let autoScales = pdfView.autoScales
+        let scale = pdfView.scaleFactor
+        show(fresh)
+        if autoScales { pdfView.autoScales = true } else { pdfView.scaleFactor = scale }
+        pdfView.layoutDocumentView()
+        if let page = fresh.page(at: min(index, max(fresh.pageCount - 1, 0))) {
+            if let point { pdfView.go(to: PDFDestination(page: page, at: point)) } else { pdfView.go(to: page) }
+        }
+        findBar?.refresh()
+        updatePageNumber()
+        Self.returnFreedMemory()
     }
 
     // MARK: File
@@ -525,6 +815,16 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         case #selector(goBack(_:)): return unlocked && pdfView.canGoBack
         case #selector(goForward(_:)): return unlocked && pdfView.canGoForward
         case #selector(findNext(_:)), #selector(findPrevious(_:)): return unlocked && findBar?.matches.isEmpty == false
+        case #selector(toggleHighlight(_:)):
+            // In the find field ⌃H is the field's own (delete backward).
+            guard !(window?.firstResponder is NSText), canAnnotate,
+                  let selection = pdfView.currentSelection, !selection.pages.isEmpty else { return false }
+            menuItem.title = highlights(under: selection).isEmpty ? "Highlight" : "Remove Highlight"
+            return true
+        case #selector(addNote(_:)):
+            menuItem.title = pdfView.selectedNote == nil ? "Add Note…" : "Edit Note…"
+            return !(window?.firstResponder is NSText) && canAnnotate
+        case #selector(saveDocument(_:)): return hasUnsavedAnnotations
         case #selector(showInFinder(_:)), #selector(openInPreview(_:)): return true
         default: return unlocked
         }

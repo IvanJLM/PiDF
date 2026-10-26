@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0 — 2026-10-26
+
+- Highlight (⌃H) and notes (⌃N), in one yellow. ⌃H highlights the selected
+  text, or removes the highlights under it. ⌃N puts a note where the pointer
+  is; a click selects a note, a drag moves it, a double click or ⌃N edits
+  it, Delete removes it. Both are ordinary PDF annotations: they travel with
+  the file and show in Preview or any other viewer.
+- The marks are written into the file itself, in one piece, on ⌘S, when the
+  tab goes behind another one, when it closes and when PiDF quits. A long
+  manual (1,600 pages) takes seconds to write, so a tab in the background
+  writes on another thread. Protected documents and files PiDF can't write
+  take no marks.
+
 ## 1.2.0 — 2026-10-25
 
 - ← and → turn a whole page, like Next Page and Previous Page; ↑ and ↓ still

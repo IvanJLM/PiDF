@@ -11,12 +11,17 @@ final class FileWatcher {
     /// replacing it), until the file is back.
     private var folderSource: DispatchSourceFileSystemObject?
     private var pending = false
+    /// PiDF is about to write the file itself: that change is no reload.
+    private var expectingOwnChange = false
 
     init(url: URL, onChange: @escaping () -> Void) {
         self.url = url
         self.onChange = onChange
         watch()
     }
+
+    func expectOwnChange() { expectingOwnChange = true }
+    func cancelExpectedChange() { expectingOwnChange = false }
 
     func stop() {
         source?.cancel()
@@ -73,6 +78,10 @@ final class FileWatcher {
                 guard let self else { return }
                 self.pending = false
                 if self.source == nil { self.watch() }
+                if self.expectingOwnChange {
+                    self.expectingOwnChange = false
+                    return
+                }
                 if FileManager.default.fileExists(atPath: self.url.path) { self.onChange() }
             }
         }

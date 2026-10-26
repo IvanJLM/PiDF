@@ -53,6 +53,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         !settingDefault && !hostingTests
     }
 
+    /// ⌘Q, logging out: the marks go into their files first.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        for controller in controllers where !controller.saveAnnotations() {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "The highlights and notes couldn’t be saved in “\(controller.url.lastPathComponent)”."
+            alert.informativeText = "Quitting loses them."
+            alert.addButton(withTitle: "Quit Anyway")
+            alert.addButton(withTitle: "Cancel")
+            if alert.runModal() != .alertFirstButtonReturn { return .terminateCancel }
+        }
+        return .terminateNow
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         for controller in controllers { controller.rememberPosition() }
     }
