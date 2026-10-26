@@ -8,12 +8,61 @@ import PDFKit
 enum Marks {
     /// The yellow of a highlight and of a note's background.
     static let yellow = NSColor(srgbRed: 0.973, green: 0.906, blue: 0.463, alpha: 1)
-    /// Helvetica is one of the fonts every PDF viewer has.
-    static let font = NSFont(name: "Helvetica", size: 11) ?? .systemFont(ofSize: 11)
-    /// Room around a note's text.
-    static let padding = NSSize(width: 8, height: 4)
     /// How close to the page edge a note can go.
     static let margin: CGFloat = 12
+    /// A note's text size on a page without text, for an A4 page.
+    static let defaultSize: CGFloat = 11
+
+    /// Helvetica is one of the fonts every PDF viewer has.
+    static func font(size: CGFloat) -> NSFont {
+        NSFont(name: "Helvetica", size: size) ?? .systemFont(ofSize: size)
+    }
+
+    // How PDFKit lays out a note's text (measured on macOS 26): 2 points in
+    // from each side and from the top, wrapped at spaces, one line every
+    // ceil(1.05 × size) points.
+    static let textInset: CGFloat = 2
+    static func lineHeight(size: CGFloat) -> CGFloat { ceil(size * 1.05) }
+
+    /// The size most of `page`'s text is set in, so a note reads like the
+    /// document: small in a dense manual, larger in slides. A page without
+    /// text (a scan) gets 11 points scaled to its width.
+    static func textSize(on page: PDFPage) -> CGFloat {
+        let width = page.bounds(for: .cropBox).width
+        let fallback = (defaultSize * width / 595).rounded()
+        guard let text = page.attributedString, text.length > 0 else { return min(max(fallback, 6), 30) }
+        var characters: [CGFloat: Int] = [:]
+        text.enumerateAttribute(.font, in: NSRange(location: 0, length: text.length)) { value, range, _ in
+            guard let font = value as? NSFont, font.pointSize >= 3 else { return }
+            let size = (font.pointSize * 2).rounded() / 2
+            characters[size, default: 0] += range.length
+        }
+        guard let size = characters.max(by: { $0.value < $1.value })?.key else { return min(max(fallback, 6), 30) }
+        return min(max(size, 5), 30)
+    }
+
+    private static func width(of text: String, _ font: NSFont) -> CGFloat {
+        NSAttributedString(string: text, attributes: [.font: font]).size().width
+    }
+
+    /// `text` broken into lines no wider than `width` (wider only for a
+    /// word that is), at spaces and at the newlines typed, as PDFKit does.
+    static func lines(of text: String, font: NSFont, width: CGFloat) -> [String] {
+        text.components(separatedBy: "\n").flatMap { paragraph -> [String] in
+            var lines: [String] = []
+            var line = ""
+            for word in paragraph.components(separatedBy: " ") {
+                let candidate = line.isEmpty ? word : line + " " + word
+                if line.isEmpty || Self.width(of: candidate, font) <= width {
+                    line = candidate
+                } else {
+                    lines.append(line)
+                    line = word
+                }
+            }
+            return lines + [line]
+        }
+    }
 
     static func isHighlight(_ annotation: PDFAnnotation) -> Bool { annotation.type == "Highlight" }
     static func isNote(_ annotation: PDFAnnotation) -> Bool { annotation.type == "FreeText" }
@@ -47,17 +96,25 @@ enum Marks {
         return annotation
     }
 
-    /// A note saying `text`, its top left corner at `topLeft` on a page
-    /// whose box is `box`, as wide as its text up to the page's width.
-    static func note(_ text: String, topLeft: NSPoint, in box: NSRect) -> PDFAnnotation {
-        let attributed = NSAttributedString(string: text, attributes: [.font: font])
+    /// A note saying `text` in `size`-point type, its top left corner at
+    /// `topLeft` on a page whose box is `box`. As wide as its text, up to
+    /// the page's right margin; longer text wraps and the note grows down.
+    static func note(_ text: String, size: CGFloat, topLeft: NSPoint, in box: NSRect) -> PDFAnnotation {
+        let font = font(size: size)
         let room = box.insetBy(dx: margin, dy: margin)
-        let width = min(ceil(attributed.size().width) + padding.width, max(room.width, 40))
-        let textHeight = attributed.boundingRect(with: NSSize(width: width - padding.width, height: .greatestFiniteMagnitude),
-                                                 options: [.usesLineFragmentOrigin]).height
-        let height = ceil(textHeight) + padding.height
-        var frame = NSRect(x: topLeft.x, y: topLeft.y - height, width: width, height: height)
-        frame = frame.kept(in: room)
+        let slack = 2 * textInset + 0.5
+        // From the point to the margin, but never narrower than about
+        // fifteen words' worth (the note then moves left), nor than a word.
+        var limit = max(room.maxX - topLeft.x, min(room.width, size * 16)) - slack
+        let longestWord = text.components(separatedBy: .whitespacesAndNewlines).map { width(of: $0, font) }.max() ?? 0
+        limit = max(limit, longestWord)
+        let lines = lines(of: text, font: font, width: limit)
+        let widest = lines.map { width(of: $0, font) }.max() ?? 0
+        // PDFKit has no more room than `limit` on a line, so it never fits
+        // more on one than counted here, and never wraps sooner.
+        let noteWidth = min(ceil(widest + slack), limit + slack)
+        let noteHeight = CGFloat(lines.count) * lineHeight(size: size) + 2 * textInset
+        let frame = NSRect(x: topLeft.x, y: topLeft.y - noteHeight, width: noteWidth, height: noteHeight).kept(in: room)
         let annotation = PDFAnnotation(bounds: frame, forType: .freeText, withProperties: nil)
         annotation.contents = text
         annotation.font = font
@@ -68,6 +125,63 @@ enum Marks {
         annotation.border?.lineWidth = 0
         annotation.userName = NSFullUserName()
         return annotation
+    }
+}
+
+/// The text box of the Add Note and Edit Note sheets: several lines, so a
+/// long note stays in view while it's written. Return adds the note,
+/// ⌥Return starts a new line, Esc cancels.
+final class NoteEditor: NSScrollView, NSTextViewDelegate {
+    let textView = NSTextView()
+    /// Return: what the sheet's first button does.
+    var onCommit: (() -> Void)?
+    var onCancel: (() -> Void)?
+
+    init(text: String) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 340, height: 92))
+        hasVerticalScroller = true
+        autohidesScrollers = true
+        borderType = .bezelBorder
+        drawsBackground = false
+        textView.frame = NSRect(origin: .zero, size: contentSize)
+        textView.minSize = NSSize(width: 0, height: contentSize.height)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = .width
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainerInset = NSSize(width: 2, height: 4)
+        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
+        textView.isRichText = false
+        textView.allowsUndo = true
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.string = text
+        textView.delegate = self
+        documentView = textView
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// The note's text, without spaces or empty lines around it.
+    var text: String { textView.string.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)):
+            onCommit?()
+            return true
+        case #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), #selector(NSResponder.insertLineBreak(_:)):
+            // ⌥Return, ⌃Return: a plain new line (not a line separator,
+            // which other PDF viewers don't break on).
+            textView.insertText("\n", replacementRange: textView.selectedRange())
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            onCancel?()
+            return true
+        default:
+            return false
+        }
     }
 }
 

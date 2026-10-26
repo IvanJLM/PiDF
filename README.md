@@ -61,8 +61,9 @@ are not reading.
   at the same page.
 - **Highlight and notes**, in one yellow and nothing to set up. ⌃H
   highlights the selected text (or removes the highlights under it). ⌃N
-  puts a note where the pointer is; click a note to select it, drag it to
-  move it, double-click or ⌃N to edit it, Delete to remove it. Both are
+  puts a note where the pointer is, in the size of the page's own text
+  (⌥Return for a new line); click a note to select it, drag it to move it,
+  double-click or ⌃N to edit it, Delete to remove it. Both are
   ordinary PDF annotations, written into the file itself (⌘S, or when the
   tab goes to the background, closes or PiDF quits), so they travel with
   the document and show in Preview or any other viewer.

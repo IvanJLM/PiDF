@@ -56,6 +56,9 @@ final class TourTests: XCTestCase {
         }
         first.toggleHighlight(nil)
         first.add(note: "Esto es una prueba de Nota", at: NSPoint(x: 60, y: 722), on: page)
+        first.add(note: "Golden Rules first: fly, navigate, communicate. The PF trims until the AP can be engaged.\nSEC F-PLN for the EOSID of the day.",
+                  at: NSPoint(x: 300, y: 660), on: page)
+        first.add(note: "A small note", at: NSPoint(x: 60, y: 560), on: page, size: 8)
         await shoot(window, "8-marks-selected", into: folder)
         first.addNote(nil)
         await shoot(window, "9-edit-note", into: folder)

@@ -588,10 +588,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
     }
 
-    /// Puts a note saying `text` on `page`, its top left corner at `point`.
+    /// Puts a note saying `text` on `page`, its top left corner at `point`,
+    /// in `size`-point type (the size of the page's text when not given).
     @discardableResult
-    func add(note text: String, at point: NSPoint, on page: PDFPage) -> PDFAnnotation {
-        let note = Marks.note(text, topLeft: point, in: page.bounds(for: .cropBox))
+    func add(note text: String, at point: NSPoint, on page: PDFPage, size: CGFloat? = nil) -> PDFAnnotation {
+        let size = size ?? Marks.textSize(on: page)
+        let note = Marks.note(text, size: size, topLeft: point, in: page.bounds(for: .cropBox))
         page.addAnnotation(note)
         pdfView.select(note)
         annotationsChanged()
@@ -605,18 +607,19 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
     }
 
-    /// A note with new text is a new annotation, in the same place: PDFKit
-    /// goes on drawing the saved look of one whose text changed. Empty text
-    /// removes the note.
+    /// A note with new text is a new annotation, in the same place and
+    /// size: PDFKit goes on drawing the saved look of one whose text
+    /// changed. Empty text removes the note.
     func replace(_ note: PDFAnnotation, with text: String) {
         guard let page = note.page else { return }
         let topLeft = NSPoint(x: note.bounds.minX, y: note.bounds.maxY)
+        let size = note.font?.pointSize
         pdfView.select(nil)
         page.removeAnnotation(note)
         if text.isEmpty {
             annotationsChanged()
         } else {
-            add(note: text, at: topLeft, on: page)
+            add(note: text, at: topLeft, on: page, size: size)
         }
     }
 
@@ -630,20 +633,27 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         return true
     }
 
+    /// The text box of the note sheet on screen, if any.
+    private(set) var noteEditor: NoteEditor?
+
     private func askForNoteText(initial: String, completion: @escaping (String?) -> Void) {
         guard let window else { return }
         let alert = NSAlert()
         alert.messageText = initial.isEmpty ? "Add Note" : "Edit Note"
         alert.addButton(withTitle: initial.isEmpty ? "Add" : "Save")
         alert.addButton(withTitle: "Cancel")
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
-        field.stringValue = initial
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
-        alert.beginSheetModal(for: window) { response in
+        alert.informativeText = initial.isEmpty ? "Return adds it; ⌥Return starts a new line." : "Return saves it; ⌥Return starts a new line."
+        let editor = NoteEditor(text: initial)
+        editor.onCommit = { [weak alert] in alert?.buttons.first?.performClick(nil) }
+        editor.onCancel = { [weak alert] in alert?.buttons.last?.performClick(nil) }
+        alert.accessoryView = editor
+        alert.window.initialFirstResponder = editor.textView
+        noteEditor = editor
+        alert.beginSheetModal(for: window) { [weak self] response in
             MainActor.assumeIsolated {
+                self?.noteEditor = nil
                 guard response == .alertFirstButtonReturn else { return completion(nil) }
-                completion(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+                completion(editor.text)
             }
         }
     }
