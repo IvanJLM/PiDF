@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The tests never touch the reading positions of the real app.
             UserDefaults.standard.removePersistentDomain(forName: "PiDFTests")
             ReadingPositions.defaults = UserDefaults(suiteName: "PiDFTests") ?? .standard
+            WindowFrame.defaults = ReadingPositions.defaults
         }
         UserDefaults.standard.register(defaults: [
             // Keep the menus to what PiDF actually does.
@@ -69,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         for controller in controllers { controller.rememberPosition() }
+        (frontWindow?.windowController as? DocumentWindowController)?.rememberFrame()
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }

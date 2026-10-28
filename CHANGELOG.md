@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0 — 2026-10-28
+
+- A new window opens where the last one was left, with its size: PiDF
+  remembers the window's place and size when it is moved, resized, closed
+  or when PiDF quits. Full screen doesn't count. If that place is no longer
+  on any display, the window opens as the first time, sized to the page.
+
 ## 1.3.0 — 2026-10-26
 
 - Highlight (⌃H) and notes (⌃N), in one yellow. ⌃H highlights the selected

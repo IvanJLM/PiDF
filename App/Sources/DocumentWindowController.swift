@@ -154,8 +154,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     // MARK: Showing
 
-    /// Shows the document as a tab of `host`, or in a new window sized to
-    /// its first page.
+    /// Shows the document as a tab of `host`, or in a new window where the
+    /// last one was left, or sized to its first page the first time.
     func present(nextTo host: NSWindow?) {
         guard let window else { return }
         if let host, host.isVisible {
@@ -163,7 +163,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             window.makeKeyAndOrderFront(nil)
             (host.windowController as? DocumentWindowController)?.scheduleParking()
         } else {
-            window.setFrame(initialFrame(), display: false)
+            window.setFrame(WindowFrame.saved() ?? initialFrame(), display: false)
             showWindow(nil)
         }
         window.makeFirstResponder(pdfView)
@@ -411,6 +411,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     func windowWillClose(_ notification: Notification) {
+        rememberFrame()
         isClosed = true
         waitForBackgroundSave()
         rememberPosition()
@@ -425,8 +426,32 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         onClose?(self)
     }
 
-    func windowWillEnterFullScreen(_ notification: Notification) { chrome.suspend() }
-    func windowDidExitFullScreen(_ notification: Notification) { chrome.resume() }
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        isFullScreen = true
+        chrome.suspend()
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        isFullScreen = false
+        chrome.resume()
+    }
+
+    /// True from the start of going full screen to the end of coming back:
+    /// the frames in between are not the window's own.
+    private var isFullScreen = false
+
+    func windowDidMove(_ notification: Notification) { rememberFrame() }
+    func windowDidEndLiveResize(_ notification: Notification) { rememberFrame() }
+    func windowDidResize(_ notification: Notification) {
+        if window?.inLiveResize == false { rememberFrame() }  // Zoom, tiling
+    }
+
+    /// The next new window opens with this one's place and size.
+    func rememberFrame() {
+        guard let window, window.isVisible, !isClosed, !isFullScreen,
+              !window.styleMask.contains(.fullScreen) else { return }
+        WindowFrame.save(window.frame)
+    }
 
     // MARK: Zoom and layout
 
