@@ -14,6 +14,7 @@ final class DocumentTests: XCTestCase {
         UserDefaults.standard.removePersistentDomain(forName: "PiDFTests")
         positions = UserDefaults(suiteName: "PiDFTests")
         ReadingPositions.defaults = positions
+        WindowFrame.defaults = positions
     }
 
     override func tearDown() async throws {
@@ -75,6 +76,32 @@ final class DocumentTests: XCTestCase {
         XCTAssertEqual(frame.width, min(max(shaped, 480), visible.width * 0.92).rounded(), accuracy: 1,
                        "the window has the page's shape")
         XCTAssertTrue(portrait.pdfView.autoScales, "pages fit the width of the window")
+    }
+
+    func testNewWindowOpensWhereTheLastOneWasLeft() async throws {
+        let folder = try Fixtures.folder(self)
+        let first = app.open([try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 2)], nextTo: nil)[0]
+        let window = try XCTUnwrap(first.window)
+        let visible = try XCTUnwrap(window.screen?.visibleFrame)
+        let moved = NSRect(x: visible.minX + 40, y: visible.minY + 30, width: 700, height: 500)
+        window.setFrame(moved, display: false)
+        first.close()
+        await wait(0.1)
+        let second = app.open([try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 2)], nextTo: nil)[0]
+        XCTAssertEqual(second.window?.frame, moved, "same place and size as the window closed last")
+    }
+
+    func testRememberedFrameFitsTheScreen() {
+        let screen = NSRect(x: 0, y: 0, width: 1440, height: 875)
+        let inside = NSRect(x: 100, y: 50, width: 800, height: 600)
+        XCTAssertEqual(WindowFrame.fit(inside, in: [screen]), inside)
+        XCTAssertEqual(WindowFrame.fit(NSRect(x: 1000, y: -100, width: 800, height: 1200), in: [screen]),
+                       NSRect(x: 640, y: 0, width: 800, height: 875), "moved and shrunk onto the screen")
+        XCTAssertNil(WindowFrame.fit(NSRect(x: 2000, y: 0, width: 800, height: 600), in: [screen]),
+                     "its display was disconnected: the window opens as the first time")
+        let second = NSRect(x: 1440, y: 0, width: 1920, height: 1055)
+        XCTAssertEqual(WindowFrame.fit(NSRect(x: 2000, y: 100, width: 800, height: 600), in: [screen, second]),
+                       NSRect(x: 2000, y: 100, width: 800, height: 600), "on the other display")
     }
 
     func testDocumentFillsTheWindowUnderTheTitleBar() throws {
