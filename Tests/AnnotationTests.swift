@@ -181,28 +181,29 @@ final class AnnotationTests: XCTestCase {
         let page = try XCTUnwrap(controller.pdf?.page(at: 0))
         let note = controller.add(note: "typed", at: NSPoint(x: 100, y: 500), on: page)
         XCTAssertEqual(note.font?.fontName, "TimesNewRomanPSMT", "the document's typeface")
-        XCTAssertEqual(note.font?.pointSize, 13, "and size")
+        XCTAssertEqual(note.font?.pointSize, 11, "and its size, at least 1.5 points smaller")
 
         controller.replace(note, with: "edited, same type")
         XCTAssertEqual(notes(on: page).first?.font?.fontName, "TimesNewRomanPSMT", "an edit keeps the note's type")
-        XCTAssertEqual(notes(on: page).first?.font?.pointSize, 13)
+        XCTAssertEqual(notes(on: page).first?.font?.pointSize, 11)
     }
 
     func testPrivateOrMissingTypefacesBecomeHelvetica() throws {
-        let (controller, _) = try open()  // set in the system font, at 18 points
+        let (controller, _) = try open()  // set in the system font, at 18 points (16 in a note)
         let page = try XCTUnwrap(controller.pdf?.page(at: 0))
         XCTAssertEqual(Marks.textFont(on: page).fontName, "Helvetica")
-        XCTAssertEqual(Marks.textFont(on: page).pointSize, 18)
+        XCTAssertEqual(Marks.textFont(on: page).pointSize, 16)
     }
 
     func testPageWithoutTextGetsASizeForItsWidth() {
         let a4 = PDFPage()
         a4.setBounds(NSRect(x: 0, y: 0, width: 595, height: 842), for: .mediaBox)
-        XCTAssertEqual(Marks.textFont(on: a4).pointSize, 11)
+        XCTAssertEqual(Marks.textFont(on: a4).pointSize, 9)
         XCTAssertEqual(Marks.textFont(on: a4).fontName, "Helvetica")
         let slide = PDFPage()
         slide.setBounds(NSRect(x: 0, y: 0, width: 960, height: 540), for: .mediaBox)
-        XCTAssertEqual(Marks.textFont(on: slide).pointSize, 18)
+        XCTAssertEqual(Marks.textFont(on: slide).pointSize, 16)
+        XCTAssertEqual(Marks.noteSize(11.5), 10, "whole points, as PDFKit writes them")
     }
 
     func testLongNotesWrapAndKeepTheirLines() throws {
