@@ -332,6 +332,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// Shows the new version of the file at the same page and zoom.
     func reload() {
         guard let fresh = PDFDocument(url: url) else { return }  // still being written: wait for the next change
+        // A deleted page put back into another app's version would land among other pages.
+        window?.undoManager?.removeAllActions()
         if fresh.isLocked, let password { _ = fresh.unlock(withPassword: password) }
         if parked != nil {
             // In the background: shown when the tab comes back.
@@ -419,6 +421,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         watcher?.stop()
         watcher = nil
         findBar?.clear()
+        window?.undoManager?.removeAllActions()  // lets the deleted pages go
         if let pageObserver { NotificationCenter.default.removeObserver(pageObserver) }
         pageObserver = nil
         pdfView.document = nil
@@ -657,6 +660,42 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         return true
     }
 
+    // MARK: Deleting pages
+
+    /// ⌃D: takes the page on screen out of the document. It leaves the file
+    /// at the next save, as the marks do; ⌘Z puts it back while the window
+    /// is open. The last page stays.
+    @objc func deletePage(_ sender: Any?) {
+        guard canAnnotate, let document = pdf, document.pageCount > 1 else { return }
+        removePage(at: pageIndex)
+    }
+
+    /// Each undo registers its redo, so ⌘Z and ⇧⌘Z go back and forth.
+    private func removePage(at index: Int) {
+        guard parked == nil, let page = pdf?.page(at: index) else { return }
+        pdfView.select(nil)
+        pdf?.removePage(at: index)
+        window?.undoManager?.registerUndo(withTarget: self) { $0.insert(page, at: index) }
+        window?.undoManager?.setActionName("Delete Page")
+        pagesChanged(showing: index)
+    }
+
+    /// The page goes into the document shown, also when that is the file
+    /// read again after a save.
+    private func insert(_ page: PDFPage, at index: Int) {
+        guard parked == nil, let document = pdf else { return }
+        document.insert(page, at: min(index, document.pageCount))
+        window?.undoManager?.registerUndo(withTarget: self) { $0.removePage(at: index) }
+        window?.undoManager?.setActionName("Delete Page")
+        pagesChanged(showing: index)
+    }
+
+    private func pagesChanged(showing index: Int) {
+        annotationsChanged()
+        go(toIndex: index)
+        findBar?.refresh()
+    }
+
     /// The text box of the note sheet on screen, if any.
     private(set) var noteEditor: NoteEditor?
 
@@ -858,6 +897,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         case #selector(addNote(_:)):
             menuItem.title = pdfView.selectedNote == nil ? "Add Note…" : "Edit Note…"
             return !(window?.firstResponder is NSText) && canAnnotate
+        case #selector(deletePage(_:)):
+            // In the find field ⌃D is the field's own (delete forward).
+            menuItem.title = "Delete Page \(pageIndex + 1)"
+            return !(window?.firstResponder is NSText) && canAnnotate && (pdf?.pageCount ?? 0) > 1
         case #selector(saveDocument(_:)): return hasUnsavedAnnotations
         case #selector(showInFinder(_:)), #selector(openInPreview(_:)): return true
         default: return unlocked

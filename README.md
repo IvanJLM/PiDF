@@ -67,6 +67,8 @@ are not reading.
   ordinary PDF annotations, written into the file itself (⌘S, or when the
   tab goes to the background, closes or PiDF quits), so they travel with
   the document and show in Preview or any other viewer.
+- **Delete a page** (⌃D): the page on screen goes, with the marks' next
+  save; ⌘Z puts it back while the window is open.
 - **Show in Finder** (⇧⌘R), **Open in Preview** (⇧⌘P) to sign, fill forms
   or print, and **full screen** (⌃⌘F).
 
@@ -83,6 +85,8 @@ For those, Open in Preview hands the document over.
 | ⌃H | Highlight the selected text (again: remove it) |
 | ⌃N | Add a note where the pointer is (note selected: edit it) |
 | Delete | Remove the selected note |
+| ⌃D | Delete the page on screen |
+| ⌘Z / ⇧⌘Z | Undo / redo deleting a page |
 | ⌘S | Save the highlights and notes now |
 | ⌘+ / ⌘− | Zoom in / out |
 | ⌘0 / ⌘9 | Actual size / fit the width |
