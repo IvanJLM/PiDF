@@ -26,6 +26,9 @@ enum MainMenu {
         file.addItem(item("Open in Preview", #selector(Doc.openInPreview(_:)), "p", [.command, .shift]))
 
         let edit = submenu(in: main, title: "Edit")
+        edit.addItem(item("Undo", Selector(("undo:")), "z"))
+        edit.addItem(item("Redo", Selector(("redo:")), "z", [.command, .shift]))
+        edit.addItem(.separator())
         edit.addItem(item("Cut", #selector(NSText.cut(_:)), "x"))
         edit.addItem(item("Copy", #selector(NSText.copy(_:)), "c"))
         edit.addItem(item("Paste", #selector(NSText.paste(_:)), "v"))
@@ -33,6 +36,7 @@ enum MainMenu {
         edit.addItem(.separator())
         edit.addItem(item("Highlight", #selector(Doc.toggleHighlight(_:)), "h", .control))
         edit.addItem(item("Add Note…", #selector(Doc.addNote(_:)), "n", .control))
+        edit.addItem(item("Delete Page", #selector(Doc.deletePage(_:)), "d", .control))
         edit.addItem(.separator())
         let find = NSMenu(title: "Find")
         find.addItem(item("Find…", #selector(Doc.showFind(_:)), "f"))

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.0 — 2026-10-29
+
+- ⌃D deletes the page on screen, the one the title bar shows; Edit > Delete
+  Page says its number. The page leaves the file when the marks are
+  written (⌘S, the tab going to the background, closing, quitting), and the
+  file is written whole, so it doesn't get smaller. ⌘Z puts the page back,
+  also after a save, and ⇧⌘Z deletes it again, while the window is open.
+  The last page stays, and protected or read-only files keep their pages,
+  as with the marks. Entries of the outline or links that led to a deleted
+  page lead nowhere.
+
 ## 1.5.1 — 2026-10-29
 
 - A note's yellow fits its text: a third of the text size around it, above
