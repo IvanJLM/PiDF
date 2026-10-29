@@ -4,6 +4,7 @@
 # Usage: ./scripts/tour.sh [folder]   (default: build/Tour)
 set -euo pipefail
 cd "$(dirname "$0")/.."
+trap ./scripts/forget-builds.sh EXIT  # keep build copies out of "Open With"
 OUT="${1:-build/Tour}"
 OUT="${OUT:A}"
 rm -rf "$OUT"; mkdir -p "$OUT"

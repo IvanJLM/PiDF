@@ -8,6 +8,7 @@
 #        (without a document, a 300-page test document is generated)
 set -euo pipefail
 cd "$(dirname "$0")/.."
+trap ./scripts/forget-builds.sh EXIT  # keep build copies out of "Open With"
 DOC=""; COMPARE=0
 for arg in "$@"; do
   if [[ "$arg" == "--compare" ]]; then COMPARE=1; else DOC="${arg:A}"; fi

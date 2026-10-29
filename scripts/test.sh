@@ -4,6 +4,7 @@
 # Usage: ./scripts/test.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
+trap ./scripts/forget-builds.sh EXIT  # keep build copies out of "Open With"
 command -v xcodegen >/dev/null || { echo "Install XcodeGen first: brew install xcodegen"; exit 1; }
 xcodegen generate --quiet
 xcodebuild -project PiDF.xcodeproj -scheme PiDF -configuration Debug -destination 'platform=macOS,arch=arm64' \
