@@ -17,8 +17,12 @@ enum Marks {
     /// How many points a note's text is at least smaller than the page's: a
     /// note is a comment beside the text, not more of it.
     static let smaller: CGFloat = 1.5
-    /// PDFKit draws a note's text 2 points in from each side.
-    static let textInset: CGFloat = 2
+    /// The yellow around a note's text, as a share of the text size: to
+    /// the left and right of its lines, above its capitals and below its
+    /// descenders.
+    static let padding: CGFloat = 0.35
+    /// The distance between a note's lines, as a share of the text size.
+    static let leading: CGFloat = 1.2
 
     /// Helvetica, at `size`: one of the fonts every PDF viewer has.
     static func helvetica(size: CGFloat) -> NSFont {
@@ -158,7 +162,8 @@ enum Marks {
     /// right margin; longer text wraps and the note grows down.
     static func note(_ text: String, font: NSFont, topLeft: NSPoint, in box: NSRect) -> PDFAnnotation {
         let room = box.insetBy(dx: margin, dy: margin)
-        let slack = 2 * textInset + 0.5
+        let inset = padding * font.pointSize
+        let slack = 2 * inset + 0.5
         // From the point to the margin, but never narrower than about
         // fifteen words' worth (the note then moves left), nor than a word.
         var limit = max(room.maxX - topLeft.x, min(room.width, font.pointSize * 16)) - slack
@@ -166,10 +171,10 @@ enum Marks {
         limit = max(limit, longestWord)
         let lines = lines(of: text, font: font, width: limit)
         let widest = lines.map { width(of: $0, font) }.max() ?? 0
-        // PDFKit has no more room than `limit` on a line, so it never fits
-        // more on one than counted here, and never wraps sooner.
+        // Rounded up, but never past the margin.
         let noteWidth = min(ceil(widest + slack), limit + slack)
-        let annotation = PDFAnnotation(bounds: NSRect(x: 0, y: 0, width: noteWidth, height: 10), forType: .freeText, withProperties: nil)
+        let annotation = Note(bounds: NSRect(x: 0, y: 0, width: noteWidth, height: 10), forType: .freeText, withProperties: nil)
+        annotation.lines = lines
         annotation.contents = text
         annotation.font = font
         annotation.fontColor = .black
@@ -178,52 +183,44 @@ enum Marks {
         annotation.border = PDFBorder()
         annotation.border?.lineWidth = 0
         annotation.userName = NSFullUserName()
-        // As tall as PDFKit draws the text, with as much room below it as
-        // above: each typeface spaces its lines its own way.
-        var trial = CGFloat(lines.count + 2) * font.pointSize * 2
-        var height = trial
-        for _ in 0..<3 {
-            guard let ink = inkRows(of: annotation, height: trial) else { break }
-            height = ink.bottom + ink.top
-            // Text reaching the bottom of the trial box may go on below it.
-            if ink.bottom < trial - font.pointSize * 2 { break }
-            trial *= 2
-        }
+        // From the top of the capitals of the first line to the bottom of
+        // the descenders of the last, and the padding above and below.
+        let height = 2 * inset + font.capHeight - font.descender + CGFloat(lines.count - 1) * leading * font.pointSize
         annotation.bounds = NSRect(x: topLeft.x, y: topLeft.y - height, width: noteWidth, height: height).kept(in: room)
         return annotation
     }
 
-    /// Where the text of `note` starts and ends below its top edge, drawn
-    /// by PDFKit in a box `height` points tall, to a quarter of a point. A
-    /// small grey bitmap, once per note made or edited.
-    static func inkRows(of note: PDFAnnotation, height: CGFloat) -> (top: CGFloat, bottom: CGFloat)? {
-        let scale: CGFloat = 4
-        let size = NSSize(width: note.bounds.width, height: height)
-        let page = PDFPage()
-        page.setBounds(NSRect(origin: .zero, size: size), for: .mediaBox)
-        note.bounds = NSRect(origin: .zero, size: size)
-        page.addAnnotation(note)
-        defer { page.removeAnnotation(note) }
-        guard let context = CGContext(data: nil, width: Int(ceil(size.width * scale)), height: Int(ceil(size.height * scale)),
-                                      bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(),
-                                      bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
-        context.setFillColor(gray: 1, alpha: 1)
-        context.fill(CGRect(x: 0, y: 0, width: context.width, height: context.height))
-        context.scaleBy(x: scale, y: scale)
-        page.draw(with: .mediaBox, to: context)
-        guard let data = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
-        // Row 0 of the bitmap's memory is its top edge. The yellow is light
-        // grey here; the text is black.
-        var first: Int?, last: Int?
-        for row in 0..<context.height {
-            let line = data + row * context.bytesPerRow
-            if (0..<context.width).contains(where: { line[$0] < 128 }) {
-                if first == nil { first = row }
-                last = row
-            }
+    /// `note` in yellow with its lines in black, as `note(_:font:topLeft:in:)`
+    /// laid it out.
+    static func draw(_ note: Note, in context: CGContext) {
+        guard let font = note.font else { return }
+        context.saveGState()
+        context.setFillColor(yellow.cgColor)
+        context.fill(note.bounds)
+        context.textMatrix = .identity
+        var baseline = note.bounds.maxY - padding * font.pointSize - font.capHeight
+        for line in note.lines {
+            let text = NSAttributedString(string: line, attributes: [.font: font, .foregroundColor: NSColor.black])
+            context.textPosition = CGPoint(x: note.bounds.minX + padding * font.pointSize, y: baseline)
+            CTLineDraw(CTLineCreateWithAttributedString(text), context)
+            baseline -= leading * font.pointSize
         }
-        guard let first, let last else { return nil }
-        return (CGFloat(first) / scale, CGFloat(last + 1) / scale)
+        context.restoreGState()
+    }
+}
+
+/// A note made in PiDF: a FreeText annotation PiDF draws itself, so the
+/// yellow fits its text closely (PDFKit puts the first line well below the
+/// top edge, the lower the larger the typeface's ascender). PDFKit writes
+/// this drawing into the file as the note's appearance, which Preview,
+/// other viewers and PiDF itself show from then on, also when the note is
+/// moved.
+final class Note: PDFAnnotation {
+    /// Its text, broken into the lines it was laid out in.
+    var lines: [String] = []
+
+    override func draw(with box: PDFDisplayBox, in context: CGContext) {
+        Marks.draw(self, in: context)
     }
 }
 
