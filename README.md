@@ -125,6 +125,7 @@ once: it offers to become the default PDF viewer.
 ./scripts/benchmark.sh [doc.pdf] --compare   # memory, CPU, wake-ups; Preview and PDF Expert too
 ./scripts/tour.sh                       # screenshots of the main states, in build/Tour
 ./scripts/bump-version.sh minor         # or patch / major, then fill in CHANGELOG.md
+./scripts/forget-builds.sh              # take build copies out of Finder's "Open With" (the scripts above do it)
 swift scripts/make-icon.swift           # redraw the app icon
 ```
 

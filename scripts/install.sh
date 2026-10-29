@@ -4,6 +4,7 @@
 # Usage: ./scripts/install.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
+trap ./scripts/forget-builds.sh EXIT  # keep build copies out of "Open With"
 
 command -v xcodegen >/dev/null || { echo "Install XcodeGen first: brew install xcodegen"; exit 1; }
 
