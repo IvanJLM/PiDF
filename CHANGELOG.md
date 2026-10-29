@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.0 — 2026-10-29
+
+- A note's text is at least 1.5 points smaller than the page's text it
+  takes its type from, in whole points, the only sizes PDFKit writes: 11
+  gives 9, 13 gives 11, 11.5 gives 10. A note is a comment beside the
+  text, not more of it. Notes already on a page keep their size.
+
 ## 1.4.0 — 2026-10-28
 
 - A new window opens where the last one was left, with its size: PiDF

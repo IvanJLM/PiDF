@@ -11,8 +11,12 @@ enum Marks {
     static let yellow = NSColor(srgbRed: 1, green: 0xE3 / 255.0, blue: 0x4D / 255.0, alpha: 1)
     /// How close to the page edge a note can go.
     static let margin: CGFloat = 12
-    /// A note's text size on a page without text, for an A4 page.
+    /// A note's text size on a page without text, for an A4 page, before
+    /// `noteSize`.
     static let defaultSize: CGFloat = 11
+    /// How many points a note's text is at least smaller than the page's: a
+    /// note is a comment beside the text, not more of it.
+    static let smaller: CGFloat = 1.5
     /// PDFKit draws a note's text 2 points in from each side.
     static let textInset: CGFloat = 2
 
@@ -21,14 +25,21 @@ enum Marks {
         NSFont(name: "Helvetica", size: size) ?? .systemFont(ofSize: size)
     }
 
+    /// The size of a note's text for a page whose text is `size`: `smaller`
+    /// less, down to whole points, since PDFKit writes a note's size in
+    /// whole points (11 gives 9, 13 gives 11, 11.5 gives 10).
+    static func noteSize(_ size: CGFloat) -> CGFloat {
+        min(max((size - smaller).rounded(.down), 5), 30)
+    }
+
     /// The type most of `page`'s text is set in, so a note reads like the
     /// document: its typeface when it is installed on this Mac (Helvetica
-    /// otherwise), and its size, small in a dense manual, larger in slides.
-    /// A page without text (a scan) gets 11-point Helvetica scaled to its
-    /// width. PDFKit embeds the typeface in the note, so the note looks the
-    /// same on a Mac without it.
+    /// otherwise), and its size, small in a dense manual, larger in slides,
+    /// made a little smaller by `noteSize`. A page without text (a scan)
+    /// takes 11-point Helvetica scaled to its width. PDFKit embeds the
+    /// typeface in the note, so the note looks the same on a Mac without it.
     static func textFont(on page: PDFPage) -> NSFont {
-        let fallback = helvetica(size: min(max((defaultSize * page.bounds(for: .cropBox).width / 595).rounded(), 6), 30))
+        let fallback = helvetica(size: noteSize((defaultSize * page.bounds(for: .cropBox).width / 595).rounded()))
         guard let text = page.attributedString, text.length > 0 else { return fallback }
         struct Style: Hashable { let name: String; let size: CGFloat }
         var characters: [Style: Int] = [:]
@@ -37,7 +48,7 @@ enum Marks {
             characters[Style(name: font.fontName, size: (font.pointSize * 2).rounded() / 2), default: 0] += range.length
         }
         guard let style = characters.max(by: { $0.value < $1.value })?.key else { return fallback }
-        let size = min(max(style.size, 5), 30)
+        let size = noteSize(style.size)
         // Only a typeface the page really uses: PDFKit names a stand-in
         // (Times) for one this Mac lacks. And only one that is installed,
         // under that very name.
