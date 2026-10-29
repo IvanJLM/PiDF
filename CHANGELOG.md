@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.1 — 2026-10-29
+
+- A note's yellow fits its text: a third of the text size around it, above
+  the capitals, below the descenders and on each side, and each new line
+  adds one line's height. A one-line note is about a quarter shorter in
+  typefaces with tall ascenders such as Brandon or Times (PDFKit put the
+  first line well below the top edge). PiDF draws the note itself, and that
+  drawing is what the file keeps, so Preview and other viewers show it the
+  same. Notes already on a page keep their look.
+
 ## 1.5.0 — 2026-10-29
 
 - A note's text is at least 1.5 points smaller than the page's text it
