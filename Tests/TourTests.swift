@@ -65,6 +65,17 @@ final class TourTests: XCTestCase {
         if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .alertSecondButtonReturn) }
         first.pdfView.select(nil)
         await shoot(window, "10-marks", into: folder)
+        first.rotatePageRight(nil)
+        first.add(note: "A note made on the rotated page", at: NSPoint(x: 200, y: 400), on: page)
+        first.pdfView.select(nil)
+        await shoot(window, "11-rotated", into: folder)
+        first.saveAnnotations()
+        await shoot(window, "11-rotated-saved", into: folder)
+        first.printDocument(nil)
+        await wait(1)
+        await shoot(window, "12-print", into: folder)
+        if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .cancel) }
+        await wait(0.3)
         let locked = try Fixtures.pdf(at: tmp.appendingPathComponent("Locked.pdf"), pages: ["Secret"], password: "fixture-pw")
         let lockedController = app.open([locked], nextTo: nil)[0]
         await shoot(try XCTUnwrap(lockedController.window), "7-password", into: folder)

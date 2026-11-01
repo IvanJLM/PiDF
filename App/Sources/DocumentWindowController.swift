@@ -3,7 +3,9 @@ import PDFKit
 
 /// The windows PiDF shows documents in, so they can be told from panels.
 final class DocumentWindow: NSWindow {
-    /// ← and → turn a whole page; ↑ and ↓ still scroll a little. Caught here,
+    /// ← and → turn a whole page; ↑ and ↓ still scroll a little. ⌃← and ⌃→
+    /// rotate the page, where macOS lets them through (out of the box they
+    /// change Spaces; ⌃⇧← and ⌃⇧→ in the menu always work). Caught here,
     /// before PDFKit's own views see the key, so it works wherever the click
     /// left the focus, except while typing in a text field.
     override func sendEvent(_ event: NSEvent) {
@@ -18,17 +20,23 @@ final class DocumentWindow: NSWindow {
             }
         }
         if event.type == .keyDown, !(firstResponder is NSText),
-           event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
            let controller = windowController as? DocumentWindowController,
            let key = event.charactersIgnoringModifiers?.unicodeScalars.first.map({ Int($0.value) }) {
-            switch key {
-            case NSLeftArrowFunctionKey:
+            let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+            switch (key, modifiers) {
+            case (NSLeftArrowFunctionKey, []):
                 controller.goToPreviousPage(nil)
                 return
-            case NSRightArrowFunctionKey:
+            case (NSRightArrowFunctionKey, []):
                 controller.goToNextPage(nil)
                 return
-            case 0x7F, NSDeleteFunctionKey:  // Delete, forward delete
+            case (NSLeftArrowFunctionKey, .control):
+                controller.rotatePageLeft(nil)
+                return
+            case (NSRightArrowFunctionKey, .control):
+                controller.rotatePageRight(nil)
+                return
+            case (0x7F, []), (NSDeleteFunctionKey, []):  // Delete, forward delete
                 if controller.deleteSelectedNote() { return }
             default:
                 break
@@ -620,7 +628,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// in `font` (the type of the page's text when not given).
     @discardableResult
     func add(note text: String, at point: NSPoint, on page: PDFPage, font: NSFont? = nil) -> PDFAnnotation {
-        let note = Marks.note(text, font: font ?? Marks.textFont(on: page), topLeft: point, in: page.bounds(for: .cropBox))
+        let note = Marks.note(text, font: font ?? Marks.textFont(on: page), topLeft: point, in: page.bounds(for: .cropBox), rotation: page.rotation)
         page.addAnnotation(note)
         pdfView.select(note)
         annotationsChanged()
@@ -639,7 +647,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// changed. Empty text removes the note.
     func replace(_ note: PDFAnnotation, with text: String) {
         guard let page = note.page else { return }
-        let topLeft = NSPoint(x: note.bounds.minX, y: note.bounds.maxY)
+        let topLeft = Marks.topLeft(of: note.bounds, in: page.bounds(for: .cropBox), rotation: page.rotation)
         let font = note.font
         pdfView.select(nil)
         page.removeAnnotation(note)
@@ -694,6 +702,34 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         annotationsChanged()
         go(toIndex: index)
         findBar?.refresh()
+    }
+
+    // MARK: Rotating pages
+
+    /// ⌃⇧← / ⌃⇧→ (and ⌃← / ⌃→, see DocumentWindow): turns the page on screen
+    /// a quarter turn. Saved in the file as the marks are; ⌘Z turns it back.
+    @objc func rotatePageLeft(_ sender: Any?) { rotateCurrentPage(by: -90) }
+    @objc func rotatePageRight(_ sender: Any?) { rotateCurrentPage(by: 90) }
+
+    private func rotateCurrentPage(by degrees: Int) {
+        guard canAnnotate else { return }
+        rotatePage(at: pageIndex, by: degrees)
+    }
+
+    /// By index, not by page: the document may have been read again after a
+    /// save when an undo comes. The find matches stay valid, so they aren't
+    /// looked for again (that reads the text of every page).
+    private func rotatePage(at index: Int, by degrees: Int) {
+        guard parked == nil, let page = pdf?.page(at: index) else { return }
+        pdfView.select(nil)
+        page.rotation = (page.rotation + degrees + 360) % 360
+        window?.undoManager?.registerUndo(withTarget: self) { $0.rotatePage(at: index, by: -degrees) }
+        window?.undoManager?.setActionName("Rotate Page")
+        annotationsChanged()
+        pdfView.layoutDocumentView()
+        if pdfView.autoScales { pdfView.autoScales = true }
+        go(toIndex: index)
+        Self.returnFreedMemory()  // the pages drawn at the old size
     }
 
     /// The text box of the note sheet on screen, if any.
@@ -861,6 +897,21 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     // MARK: File
 
+    /// ⌘P: macOS's own print sheet, for the document as it is on screen
+    /// (marks and rotations not yet saved included). Costs nothing until asked.
+    @objc func printDocument(_ sender: Any?) {
+        guard let window, let operation = printOperation() else { return }
+        operation.runModal(for: window, delegate: self, didRun: #selector(printOperationDidRun(_:success:contextInfo:)), contextInfo: nil)
+    }
+
+    @objc private func printOperationDidRun(_ operation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        Self.returnFreedMemory()  // what the sheet's previews used
+    }
+
+    func printOperation() -> NSPrintOperation? {
+        pdf?.printOperation(for: .shared, scalingMode: .pageScaleToFit, autoRotate: true)
+    }
+
     @objc func showInFinder(_ sender: Any?) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
@@ -901,6 +952,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             // In the find field ⌃D is the field's own (delete forward).
             menuItem.title = "Delete Page \(pageIndex + 1)"
             return !(window?.firstResponder is NSText) && canAnnotate && (pdf?.pageCount ?? 0) > 1
+        case #selector(rotatePageLeft(_:)), #selector(rotatePageRight(_:)):
+            // In the find field these keys select text.
+            return !(window?.firstResponder is NSText) && canAnnotate
+        case #selector(printDocument(_:)): return unlocked && pdf?.allowsPrinting == true
         case #selector(saveDocument(_:)): return hasUnsavedAnnotations
         case #selector(showInFinder(_:)), #selector(openInPreview(_:)): return true
         default: return unlocked

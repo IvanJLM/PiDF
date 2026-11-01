@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.7.0 — 2026-11-01
+
+- ⌃⇧← and ⌃⇧→ turn the page on screen a quarter turn, in Edit > Rotate Page
+  Left and Right. ⌃← and ⌃→ do the same when macOS lets them through: out of
+  the box it keeps them for changing Spaces (System Settings > Keyboard >
+  Keyboard Shortcuts > Mission Control). The turn is saved in the file like
+  the marks, and ⌘Z turns the page back, also after a save. Protected or
+  read-only files keep their pages as they are.
+- A note made on a page shown turned reads upright, and starts where the
+  pointer is. This also holds for pages that came turned in the file.
+- ⌘P opens macOS's print sheet for the document, marks not yet saved
+  included. Documents that forbid printing don't offer it.
+
 ## 1.6.0 — 2026-10-29
 
 - ⌃D deletes the page on screen, the one the title bar shows; Edit > Delete

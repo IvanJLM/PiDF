@@ -69,8 +69,13 @@ are not reading.
   the document and show in Preview or any other viewer.
 - **Delete a page** (⌃D): the page on screen goes, with the marks' next
   save; ⌘Z puts it back while the window is open.
-- **Show in Finder** (⇧⌘R), **Open in Preview** (⇧⌘P) to sign, fill forms
-  or print, and **full screen** (⌃⌘F).
+- **Rotate a page** (⌃⇧← / ⌃⇧→): the page on screen turns a quarter turn,
+  saved like the marks; ⌘Z turns it back. ⌃← and ⌃→ work too if you free
+  them from macOS, which keeps them for changing Spaces (System Settings ›
+  Keyboard › Keyboard Shortcuts › Mission Control).
+- **Print** (⌘P), with macOS's own sheet.
+- **Show in Finder** (⇧⌘R), **Open in Preview** (⇧⌘P) to sign or fill forms,
+  and **full screen** (⌃⌘F).
 
 There is no other editing, no sidebar, no preferences and no auto-updates.
 For those, Open in Preview hands the document over.
@@ -86,8 +91,10 @@ For those, Open in Preview hands the document over.
 | ⌃N | Add a note where the pointer is (note selected: edit it) |
 | Delete | Remove the selected note |
 | ⌃D | Delete the page on screen |
-| ⌘Z / ⇧⌘Z | Undo / redo deleting a page |
+| ⌃⇧← / ⌃⇧→ | Rotate the page on screen (also ⌃← / ⌃→ if freed from macOS) |
+| ⌘Z / ⇧⌘Z | Undo / redo deleting or rotating a page |
 | ⌘S | Save the highlights and notes now |
+| ⌘P | Print |
 | ⌘+ / ⌘− | Zoom in / out |
 | ⌘0 / ⌘9 | Actual size / fit the width |
 | ⌥⌘2 | Two pages |
