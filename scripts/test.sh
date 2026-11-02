@@ -11,4 +11,4 @@ xcodegen generate --quiet
 shown='(error|failed|skipped):|^\*\* TEST|Executed [0-9]+ tests'
 [[ -n "${CI:-}" ]] && shown="$shown|Test Case .* started"
 xcodebuild -project PiDF.xcodeproj -scheme PiDF -configuration Debug -destination 'platform=macOS,arch=arm64' \
-  -derivedDataPath build/Test test 2>&1 | grep --line-buffered -v 'com.apple.linkd' | grep --line-buffered -E "$shown" | uniq
+  -derivedDataPath build/Test test 2>&1 | grep --line-buffered -v 'com.apple.linkd' | grep --line-buffered -E "$shown" | awk '$0 != last { print; fflush(); last = $0 }'
