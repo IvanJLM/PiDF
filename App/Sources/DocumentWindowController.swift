@@ -213,7 +213,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         restorePosition()
         chrome.introduce()
         if pdf?.isLocked == true { askForPassword() }
-        Self.returnFreedMemory()  // what opening the document used
     }
 
     func bringToFront() {
@@ -294,21 +293,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
                         scale: pdfView.scaleFactor, autoScales: pdfView.autoScales)
         rememberPosition()  // kept even if the app never gets to quit normally
         pdfView.document = nil
-        Self.returnFreedMemory()
         saveAnnotationsInBackground()
     }
-
-    /// PDFKit frees what it decoded to draw the pages (in the background,
-    /// a moment later), but the allocator keeps that memory for reuse. Give
-    /// it back to macOS once PDFKit is done, so it shows as free.
-    static func returnFreedMemory() {
-        reliefTask?.cancel()
-        let task = DispatchWorkItem { malloc_zone_pressure_relief(nil, 0) }
-        reliefTask = task
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: task)
-    }
-
-    private static var reliefTask: DispatchWorkItem?
 
     func unpark() {
         guard parked != nil else { return }
@@ -646,7 +632,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         pdfView.isHidden = false
         findBar?.isHidden = false
         window?.makeFirstResponder(pdfView)
-        Self.returnFreedMemory()  // the thumbnails
     }
 
     func choosePage(_ index: Int) {
@@ -744,14 +729,25 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         return FileManager.default.isWritableFile(atPath: url.path)
     }
 
+    /// The boxes of the lines of `selection`, page by page, in one pass: a
+    /// whole manual selected has a hundred thousand lines.
+    private func lines(of selection: PDFSelection) -> [(PDFPage, [NSRect])] {
+        var boxes: [ObjectIdentifier: [NSRect]] = [:]
+        for line in selection.selectionsByLine() {
+            for page in line.pages { boxes[ObjectIdentifier(page), default: []].append(line.bounds(for: page)) }
+        }
+        return selection.pages.map { ($0, boxes[ObjectIdentifier($0)] ?? []) }
+    }
+
     /// The highlights under the lines of `selection`, with their pages.
     private func highlights(under selection: PDFSelection) -> [(PDFPage, PDFAnnotation)] {
-        let lines = selection.selectionsByLine()
-        return selection.pages.flatMap { page -> [(PDFPage, PDFAnnotation)] in
+        lines(of: selection).flatMap { page, boxes -> [(PDFPage, PDFAnnotation)] in
+            let marked = page.annotations.filter(Marks.isHighlight)
+            guard !marked.isEmpty else { return [] }
             // The middle of each line, so a line next to a highlight doesn't count.
-            let rects = lines.filter { $0.pages.contains(page) }.map { $0.bounds(for: page) }.map { $0.insetBy(dx: 0, dy: $0.height / 4) }
-            return page.annotations
-                .filter { annotation in Marks.isHighlight(annotation) && Marks.rects(of: annotation).contains { rect in rects.contains { $0.intersects(rect) } } }
+            let rects = boxes.map { $0.insetBy(dx: 0, dy: $0.height / 4) }
+            return marked
+                .filter { annotation in Marks.rects(of: annotation).contains { rect in rects.contains { $0.intersects(rect) } } }
                 .map { (page, $0) }
         }
     }
@@ -763,10 +759,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         if !under.isEmpty {
             for (page, annotation) in under { page.removeAnnotation(annotation) }
         } else {
-            let lines = selection.selectionsByLine()
-            for page in selection.pages {
-                let rects = lines.filter { $0.pages.contains(page) }.map { $0.bounds(for: page) }
-                if !rects.isEmpty { page.addAnnotation(Marks.highlight(lines: rects)) }
+            for (page, rects) in lines(of: selection) where !rects.isEmpty {
+                page.addAnnotation(Marks.highlight(lines: rects))
             }
             pdfView.clearSelection()
         }
@@ -896,7 +890,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         if pdfView.autoScales { pdfView.autoScales = true }
         go(toIndex: index)
         reloadPageSelector()
-        Self.returnFreedMemory()  // the pages drawn at the old size
     }
 
     /// The text box of the note sheet on screen, if any.
@@ -1115,7 +1108,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
         findBar?.refresh()
         updatePageNumber()
-        Self.returnFreedMemory()
     }
 
     // MARK: File
@@ -1124,11 +1116,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// (marks and rotations not yet saved included). Costs nothing until asked.
     @objc func printDocument(_ sender: Any?) {
         guard let window, let operation = printOperation() else { return }
-        operation.runModal(for: window, delegate: self, didRun: #selector(printOperationDidRun(_:success:contextInfo:)), contextInfo: nil)
-    }
-
-    @objc private func printOperationDidRun(_ operation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {
-        Self.returnFreedMemory()  // what the sheet's previews used
+        operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
     }
 
     func printOperation() -> NSPrintOperation? {

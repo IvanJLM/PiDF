@@ -32,7 +32,10 @@ Most of that difference comes from three choices:
 - **Tabs in the background let go of their rendered pages** and keep only
   the document and where you were. Coming back to a tab draws it again, at
   the same page and zoom.
-- **Freed memory goes back to macOS** instead of staying reserved for reuse.
+- **Freed memory goes back to macOS** instead of staying reserved for reuse:
+  the allocator is told not to keep large blocks (`MallocLargeCache=0` in
+  `Info.plist`), so what PDFKit lets go of a few seconds after drawing shows as
+  free.
 
 PiDF quits when its last window closes, so it uses no memory at all when you
 are not reading.
