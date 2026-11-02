@@ -391,6 +391,94 @@ final class AnnotationTests: XCTestCase {
         XCTAssertEqual(notes(on: PDFDocument(url: url)?.page(at: 0)).first?.contents, "closing")
     }
 
+    // MARK: A new version of the file while marks wait to be written
+
+    /// Answers the sheet on screen: first button, or second.
+    private func answer(_ controller: DocumentWindowController, _ response: NSApplication.ModalResponse) async throws {
+        await waitUntil { controller.window?.attachedSheet != nil }
+        let sheet = try XCTUnwrap(controller.window?.attachedSheet)
+        controller.window?.endSheet(sheet, returnCode: response)
+        await waitUntil { controller.window?.attachedSheet == nil }
+    }
+
+    func testANewVersionAsksBeforeTheMarksGo() async throws {
+        let (controller, url) = try open()
+        var reloads = 0
+        controller.onReload = { reloads += 1 }
+        controller.add(note: "mine", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(controller.pdf?.page(at: 0)))
+        try Fixtures.pdf(at: url, pages: ["from another app"])
+        await waitUntil { controller.window?.attachedSheet != nil }
+        XCTAssertNotNil(controller.window?.attachedSheet, "asked")
+        XCTAssertEqual(reloads, 0, "the document on screen stays until the answer")
+        XCTAssertTrue(controller.hasUnsavedAnnotations)
+        XCTAssertEqual(notes(on: controller.pdf?.page(at: 0)).first?.contents, "mine")
+
+        try await answer(controller, .alertFirstButtonReturn)  // Keep My Marks
+        XCTAssertFalse(controller.hasUnsavedAnnotations)
+        XCTAssertEqual(controller.window?.isDocumentEdited, false)
+        let written = try XCTUnwrap(PDFDocument(url: url))
+        XCTAssertEqual(written.pageCount, 2, "the document with the marks replaced the other version")
+        XCTAssertEqual(notes(on: written.page(at: 0)).first?.contents, "mine")
+        XCTAssertEqual(notes(on: controller.pdf?.page(at: 0)).first?.contents, "mine")
+        await wait(0.6)
+        XCTAssertEqual(reloads, 0, "PiDF's own write is no new version")
+        XCTAssertNil(controller.window?.attachedSheet, "and asks nothing")
+    }
+
+    func testUsingTheNewFileDropsTheMarks() async throws {
+        let (controller, url) = try open()
+        var reloads = 0
+        controller.onReload = { reloads += 1 }
+        controller.add(note: "mine", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(controller.pdf?.page(at: 0)))
+        try Fixtures.pdf(at: url, pages: ["from another app"])
+        try await answer(controller, .alertSecondButtonReturn)  // Use the New File
+        XCTAssertEqual(reloads, 1)
+        XCTAssertFalse(controller.hasUnsavedAnnotations)
+        XCTAssertEqual(controller.window?.isDocumentEdited, false)
+        XCTAssertEqual(controller.pdf?.pageCount, 1, "the other app's version on screen")
+        XCTAssertTrue(notes(on: controller.pdf?.page(at: 0)).isEmpty)
+        XCTAssertTrue(notes(on: PDFDocument(url: url)?.page(at: 0)).isEmpty, "and in the file, untouched")
+    }
+
+    func testMoreVersionsWhileAskingAskOnce() async throws {
+        let (controller, url) = try open()
+        controller.add(note: "mine", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(controller.pdf?.page(at: 0)))
+        try Fixtures.pdf(at: url, pages: ["one"])
+        await waitUntil { controller.window?.attachedSheet != nil }
+        try Fixtures.pdf(at: url, pages: ["two", "pages"])
+        await wait(0.6)
+        try await answer(controller, .alertSecondButtonReturn)
+        await wait(0.3)
+        XCTAssertNil(controller.window?.attachedSheet, "one question for them all")
+        XCTAssertEqual(controller.pdf?.pageCount, 2, "the latest version")
+    }
+
+    func testBackgroundTabAsksWhenItComesBack() async throws {
+        let folder = try Fixtures.folder(self)
+        let a = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 3)
+        let first = app.open([a], nextTo: nil)[0]
+        first.add(note: "mine", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(first.pdf?.page(at: 0)))
+        // The write fails, so the marks are still waiting behind the other tab.
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+        addTeardownBlock { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
+        app.open([try Fixtures.pdf(in: try Fixtures.folder(self), name: "b.pdf", pageCount: 1)], nextTo: nil)
+        await waitUntil { first.isParked }
+        await wait(0.5)
+        XCTAssertTrue(first.hasUnsavedAnnotations)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
+        try Fixtures.pdf(at: a, pages: ["from another app"])
+        await wait(0.6)
+        XCTAssertTrue(first.isParked)
+        XCTAssertNil(first.window?.attachedSheet, "not on a tab behind another")
+        XCTAssertEqual(first.pdf?.pageCount, 3)
+
+        first.bringToFront()
+        await waitUntil { !first.isParked }
+        try await answer(first, .alertFirstButtonReturn)
+        XCTAssertEqual(PDFDocument(url: a)?.pageCount, 3)
+        XCTAssertEqual(notes(on: PDFDocument(url: a)?.page(at: 0)).first?.contents, "mine")
+    }
+
     // MARK: Where marks can't be made
 
     func testProtectedAndReadOnlyDocumentsTakeNoMarks() async throws {

@@ -142,12 +142,15 @@ final class RotatePrintTests: XCTestCase {
         XCTAssertFalse(readOnly.hasUnsavedAnnotations)
     }
 
-    func testAnotherAppsVersionForgetsTheRotations() async throws {
+    func testUsingAnotherAppsVersionForgetsTheRotations() async throws {
         let (controller, url) = try open(pages: 2)
         var reloads = 0
         controller.onReload = { reloads += 1 }
         controller.rotatePageRight(nil)
         try Fixtures.pdf(at: url, pages: ["New 1", "New 2"])
+        await waitUntil { controller.window?.attachedSheet != nil }
+        XCTAssertEqual(rotation(controller, 0), 90, "not before the answer")
+        controller.window?.endSheet(try XCTUnwrap(controller.window?.attachedSheet), returnCode: .alertSecondButtonReturn)
         await waitUntil { reloads == 1 }
         XCTAssertEqual(controller.window?.undoManager?.canUndo, false)
         XCTAssertEqual(rotation(controller, 0), 0)

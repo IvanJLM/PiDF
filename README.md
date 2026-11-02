@@ -58,7 +58,8 @@ are not reading.
 - **Remembers where you were**: each document reopens at the page you left
   (for the last 200 documents). The page number shows in the title bar.
 - **Follows the file**: when another app saves a new version, PiDF shows it
-  at the same page.
+  at the same page. With marks not saved yet, it asks first: keep them, or use
+  the new file.
 - **Highlight and notes**, in one yellow and nothing to set up. ⌃H
   highlights the selected text (or removes the highlights under it). ⌃N
   puts a note where the pointer is, in the type of the page's own text,

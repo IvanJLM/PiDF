@@ -88,13 +88,16 @@ final class PageTests: XCTestCase {
         XCTAssertFalse(readOnly.validateMenuItem(deleteItem))
     }
 
-    func testAnotherAppsVersionForgetsTheDeletedPages() async throws {
+    func testUsingAnotherAppsVersionForgetsTheDeletedPages() async throws {
         let (controller, url) = try open(pages: 3)
         var reloads = 0
         controller.onReload = { reloads += 1 }
         controller.deletePage(nil)
         XCTAssertEqual(controller.window?.undoManager?.canUndo, true)
         try Fixtures.pdf(at: url, pages: ["New 1", "New 2"])
+        await waitUntil { controller.window?.attachedSheet != nil }
+        XCTAssertEqual(texts(controller.pdf), ["Page 2", "Page 3"], "not before the answer")
+        controller.window?.endSheet(try XCTUnwrap(controller.window?.attachedSheet), returnCode: .alertSecondButtonReturn)
         await waitUntil { reloads == 1 }
         XCTAssertEqual(texts(controller.pdf), ["New 1", "New 2"])
         XCTAssertEqual(controller.window?.undoManager?.canUndo, false)

@@ -304,6 +304,29 @@ final class BackgroundTabTests: XCTestCase {
         XCTAssertTrue(highlighted.allSatisfy { $0.pages.first?.document === first.pdf }, "no highlight of the old version")
     }
 
+    func testFindIsRefreshedWhenABackgroundTabWroteItsMarks() async throws {
+        let folder = try Fixtures.folder(self)
+        let url = try Fixtures.pdf(at: folder.appendingPathComponent("a.pdf"), pages: ["needle one", "two", "needle three"])
+        let first = app.open([url], nextTo: nil)[0]
+        first.showFind(nil)
+        first.findBar?.search("needle")
+        await waitUntil { first.findBar?.matches.count == 2 && first.pdf?.isFinding == false }
+        first.add(note: "behind", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(first.pdf?.page(at: 0)))
+        app.open([try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 2)], nextTo: nil)
+        await waitUntil { first.isParked && !first.hasUnsavedAnnotations }
+        first.bringToFront()
+        await waitUntil {
+            !first.isParked && first.pdf?.isFinding == false && first.findBar?.matches.first?.pages.first?.document === first.pdf
+        }
+        let bar = try XCTUnwrap(first.findBar)
+        XCTAssertEqual(bar.matches.count, 2)
+        let highlighted = first.pdfView.highlightedSelections ?? []
+        XCTAssertFalse(highlighted.isEmpty)
+        XCTAssertTrue(highlighted.allSatisfy { $0.pages.first?.document === first.pdf }, "no highlight of the document before the write")
+        first.findNext(nil)
+        XCTAssertEqual(first.pageIndex, 2, "⌘G goes on walking through them")
+    }
+
     func testTwoPagesIsOneSettingForEveryTab() async throws {
         let stored = UserDefaults.standard.object(forKey: "TwoPages")
         defer { UserDefaults.standard.set(stored, forKey: "TwoPages") }
