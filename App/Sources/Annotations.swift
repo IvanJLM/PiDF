@@ -157,11 +157,34 @@ enum Marks {
         return annotation
     }
 
+    /// From a page's own space to the page as it is seen, turned `rotation`
+    /// degrees clockwise: x to the right and y up on screen.
+    private static func seen(box: NSRect, rotation: Int) -> CGAffineTransform {
+        switch rotation {
+        case 90: CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: -box.minY, ty: box.maxX)
+        case 180: CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: box.maxX, ty: box.maxY)
+        case 270: CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: box.maxY, ty: -box.minX)
+        default: .identity
+        }
+    }
+
+    /// The corner of `bounds` that is seen as its top left, on a page turned
+    /// `rotation` degrees whose box is `box`.
+    static func topLeft(of bounds: NSRect, in box: NSRect, rotation: Int) -> NSPoint {
+        let turn = seen(box: box, rotation: rotation)
+        let frame = bounds.applying(turn)
+        return NSPoint(x: frame.minX, y: frame.maxY).applying(turn.inverted())
+    }
+
     /// A note saying `text` in `font`, its top left corner at `topLeft` on
     /// a page whose box is `box`. As wide as its text, up to the page's
-    /// right margin; longer text wraps and the note grows down.
-    static func note(_ text: String, font: NSFont, topLeft: NSPoint, in box: NSRect) -> PDFAnnotation {
-        let room = box.insetBy(dx: margin, dy: margin)
+    /// right margin; longer text wraps and the note grows down. On a page
+    /// turned `rotation` degrees all of that is as seen on screen, so the
+    /// note reads upright while the page is shown that way.
+    static func note(_ text: String, font: NSFont, topLeft: NSPoint, in box: NSRect, rotation: Int = 0) -> PDFAnnotation {
+        let turn = seen(box: box, rotation: rotation)
+        let topLeft = topLeft.applying(turn)
+        let room = box.applying(turn).insetBy(dx: margin, dy: margin)
         let inset = padding * font.pointSize
         let slack = 2 * inset + 0.5
         // From the point to the margin, but never narrower than about
@@ -175,6 +198,7 @@ enum Marks {
         let noteWidth = min(ceil(widest + slack), limit + slack)
         let annotation = Note(bounds: NSRect(x: 0, y: 0, width: noteWidth, height: 10), forType: .freeText, withProperties: nil)
         annotation.lines = lines
+        annotation.rotation = rotation
         annotation.contents = text
         annotation.font = font
         annotation.fontColor = .black
@@ -186,7 +210,7 @@ enum Marks {
         // From the top of the capitals of the first line to the bottom of
         // the descenders of the last, and the padding above and below.
         let height = 2 * inset + font.capHeight - font.descender + CGFloat(lines.count - 1) * leading * font.pointSize
-        annotation.bounds = NSRect(x: topLeft.x, y: topLeft.y - height, width: noteWidth, height: height).kept(in: room)
+        annotation.bounds = NSRect(x: topLeft.x, y: topLeft.y - height, width: noteWidth, height: height).kept(in: room).applying(turn.inverted())
         return annotation
     }
 
@@ -197,11 +221,18 @@ enum Marks {
         context.saveGState()
         context.setFillColor(yellow.cgColor)
         context.fill(note.bounds)
+        // The text is set around the note's middle, turned back by as much
+        // as its page was turned when the note was made.
+        let sideways = note.rotation % 180 != 0
+        let width = sideways ? note.bounds.height : note.bounds.width
+        let height = sideways ? note.bounds.width : note.bounds.height
+        context.translateBy(x: note.bounds.midX, y: note.bounds.midY)
+        context.rotate(by: CGFloat(note.rotation) * .pi / 180)
         context.textMatrix = .identity
-        var baseline = note.bounds.maxY - padding * font.pointSize - font.capHeight
+        var baseline = height / 2 - padding * font.pointSize - font.capHeight
         for line in note.lines {
             let text = NSAttributedString(string: line, attributes: [.font: font, .foregroundColor: NSColor.black])
-            context.textPosition = CGPoint(x: note.bounds.minX + padding * font.pointSize, y: baseline)
+            context.textPosition = CGPoint(x: -width / 2 + padding * font.pointSize, y: baseline)
             CTLineDraw(CTLineCreateWithAttributedString(text), context)
             baseline -= leading * font.pointSize
         }
@@ -218,6 +249,8 @@ enum Marks {
 final class Note: PDFAnnotation {
     /// Its text, broken into the lines it was laid out in.
     var lines: [String] = []
+    /// How many degrees its page was turned when it was made.
+    var rotation = 0
 
     override func draw(with box: PDFDisplayBox, in context: CGContext) {
         Marks.draw(self, in: context)
