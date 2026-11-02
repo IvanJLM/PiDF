@@ -192,7 +192,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
         pdfView.document = document
         guard let document, !document.isLocked else { return closePageSelector() }
-        pageSelector?.reload(document)
+        reloadPageSelector()
     }
 
     // MARK: Showing
@@ -609,7 +609,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         if pageSelector != nil { return closePageSelector() }
         guard parked == nil, let document = pdfView.document, !document.isLocked, let content = window?.contentView else { return }
         let current = pageIndex
-        let selector = PageSelector(frame: content.bounds, document: selectorDocument() ?? document,
+        let selector = PageSelector(frame: content.bounds, document: document, copy: selectorCopy(),
                                     topInset: max(chrome.barHeight, 28) + 8, background: pdfView.backgroundColor)
         selector.onChoose = { [weak self] index in self?.choosePage(index) }
         content.addSubview(selector, positioned: .above, relativeTo: pdfView)
@@ -623,11 +623,17 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     /// PDFKit keeps what it decodes to draw a page for as long as the document
     /// lives, so the grid reads the file through a copy of its own that goes
-    /// with it. Changes not saved yet are only in the document shown: nil.
-    private func selectorDocument() -> PDFDocument? {
+    /// with it, on another thread. Changes not saved yet are only in the
+    /// document shown: nil.
+    private func selectorCopy() -> PDFDocument? {
         guard !hasUnsavedAnnotations, let copy = PDFDocument(url: url) else { return nil }
         if copy.isLocked, let password { _ = copy.unlock(withPassword: password) }
         return copy.isLocked || copy.pageCount != pdf?.pageCount ? nil : copy
+    }
+
+    private func reloadPageSelector() {
+        guard let selector = pageSelector, let document = pdf else { return }
+        selector.reload(document, copy: selectorCopy())
     }
 
     func closePageSelector() {
@@ -842,7 +848,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         annotationsChanged()
         go(toIndex: index)
         findBar?.refresh()
-        if let document = pdf { pageSelector?.reload(document) }
+        reloadPageSelector()
     }
 
     // MARK: Rotating pages
@@ -871,7 +877,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         pdfView.layoutDocumentView()
         if pdfView.autoScales { pdfView.autoScales = true }
         go(toIndex: index)
-        if let document = pdf { pageSelector?.reload(document) }
+        reloadPageSelector()
         Self.returnFreedMemory()  // the pages drawn at the old size
     }
 

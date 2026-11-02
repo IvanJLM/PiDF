@@ -264,6 +264,75 @@ final class PageSelectorTests: XCTestCase {
         XCTAssertNil(closed, "nothing holds on to it")
     }
 
+    private func images(in selector: PageSelector) -> [NSImage] {
+        selector.grid.visibleItems().compactMap { ($0 as? PageItem)?.image }
+    }
+
+    func testPagesAreDrawnOffTheMainThreadFromTheFile() async throws {
+        let (controller, _, _) = try open(pages: 12)
+        controller.togglePageSelector(nil)
+        let selector = try XCTUnwrap(controller.pageSelector)
+        XCTAssertTrue(selector.drawsOffThread)
+        await waitUntil { !self.images(in: selector).isEmpty && self.images(in: selector).count == selector.grid.visibleItems().count }
+        XCTAssertFalse(images(in: selector).isEmpty)
+        XCTAssertEqual(images(in: selector).count, selector.grid.visibleItems().count, "every page in view")
+        let image = try XCTUnwrap(images(in: selector).first)
+        XCTAssertLessThan(image.size.width, image.size.height, "A4: portrait")
+    }
+
+    func testChangesNotSavedYetAreDrawnFromTheDocumentShown() async throws {
+        let (controller, _, _) = try open(pages: 4)
+        controller.rotatePageRight(nil)
+        controller.togglePageSelector(nil)
+        let selector = try XCTUnwrap(controller.pageSelector)
+        XCTAssertFalse(selector.drawsOffThread)
+        await waitUntil { self.images(in: selector).count == 4 }
+        XCTAssertEqual(images(in: selector).count, 4)
+    }
+
+    func testAPageChangeWhileOpenMovesToTheDocumentShown() async throws {
+        let (controller, _, _) = try open(pages: 5)
+        controller.go(toIndex: 1)
+        controller.togglePageSelector(nil)
+        let selector = try XCTUnwrap(controller.pageSelector)
+        XCTAssertTrue(selector.drawsOffThread)
+        controller.closePageSelector()
+        controller.deletePage(nil)
+        controller.togglePageSelector(nil)
+        let again = try XCTUnwrap(controller.pageSelector)
+        XCTAssertFalse(again.drawsOffThread, "the file still has the page")
+        XCTAssertTrue(controller.saveAnnotations())
+        XCTAssertTrue(again.drawsOffThread, "saved: the file is the same again")
+        await waitUntil { self.images(in: again).count == 4 }
+        XCTAssertEqual(images(in: again).count, 4)
+    }
+
+    func testAnotherAppsVersionIsDrawnNotTheOldOne() async throws {
+        let (controller, _, url) = try open(pages: 30)
+        var reloads = 0
+        controller.onReload = { reloads += 1 }
+        controller.togglePageSelector(nil)
+        let selector = try XCTUnwrap(controller.pageSelector)
+        try Fixtures.pdf(at: url, pages: ["New"], size: CGSize(width: 842, height: 595))
+        await waitUntil { reloads == 1 }
+        await waitUntil { self.images(in: selector).count == 1 }
+        let image = try XCTUnwrap(images(in: selector).first)
+        XCTAssertGreaterThan(image.size.width, image.size.height, "the new page's shape")
+    }
+
+    func testAMarkSavedOnATurnedPageIsDrawnInShapeFromTheFile() throws {
+        let (controller, _, url) = try open(pages: 2)
+        let page = try XCTUnwrap(controller.pdf?.page(at: 0))
+        controller.rotatePageRight(nil)
+        controller.add(note: "A note wider than it is high", at: NSPoint(x: 100, y: 300), on: page, font: NSFont(name: "Helvetica", size: 12))
+        XCTAssertTrue(controller.saveAnnotations())
+        let saved = try XCTUnwrap(PDFDocument(url: url)?.page(at: 0))
+        let image = try XCTUnwrap(PageSelector.quickImage(of: saved, scale: 2))
+        XCTAssertGreaterThan(image.size.width, image.size.height, "A4 turned: landscape")
+        let shown = try yellowBox(in: image)
+        XCTAssertGreaterThan(shown.width, 3 * shown.height, "not stretched: \(shown)")
+    }
+
     func testAMarkNotSavedYetShowsInTheGrid() throws {
         let (controller, _, _) = try open(pages: 3)
         let page = try XCTUnwrap(controller.pdf?.page(at: 0))
