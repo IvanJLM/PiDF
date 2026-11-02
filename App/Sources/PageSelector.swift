@@ -8,24 +8,46 @@ import PDFKit
 @MainActor
 final class PageSelector: NSView, NSCollectionViewDataSource {
     /// The room for a page in the grid; a page keeps its shape within it.
-    static let thumbnail = NSSize(width: 170, height: 240)
-    /// The thumbnails kept for scrolling back, about three screens' worth.
+    nonisolated static let thumbnail = NSSize(width: 170, height: 240)
+    /// The thumbnails kept for scrolling back, a screen or two's worth.
     static let keptThumbnails = 64
+    private nonisolated static let drawing = DispatchQueue(label: "PiDF.thumbnails", qos: .userInitiated)
 
     let grid = PageGrid()
     private let scroll = NSScrollView()
     private let layoutGrid = NSCollectionViewFlowLayout()
+    /// The document shown, for this thread: how many pages, how big.
     private var document: PDFDocument
+    /// The file read by the grid alone, for the drawing queue: a document
+    /// can't be used from two threads at once. Nil with changes not saved yet,
+    /// which only the document shown has: its pages are drawn on this thread.
+    private var copy: OffThread<PDFDocument>?
     private let kept = NSCache<NSNumber, NSImage>()
+
+    /// A cell waiting for its page.
+    private struct Wanted {
+        let index: Int
+        weak var item: PageItem?
+    }
+
+    /// One page is drawn at a time, so the cells that move on before their
+    /// turn cost nothing.
+    private var waiting: [Wanted] = []
+    private var isDrawing = false
+    /// Counts the documents shown: a page drawn from an earlier one is dropped.
+    private var version = 0
 
     /// How many thumbnails have been drawn (used by the tests).
     private(set) var drawn = 0
+    /// Whether the pages are drawn on another thread (used by the tests).
+    var drawsOffThread: Bool { copy != nil }
 
     /// A page was chosen: its index.
     var onChoose: ((Int) -> Void)?
 
-    init(frame: NSRect, document: PDFDocument, topInset: CGFloat, background: NSColor) {
+    init(frame: NSRect, document: PDFDocument, copy: PDFDocument?, topInset: CGFloat, background: NSColor) {
         self.document = document
+        self.copy = copy.map(OffThread.init)
         super.init(frame: frame)
         kept.countLimit = Self.keptThumbnails
         wantsLayer = true
@@ -77,9 +99,12 @@ final class PageSelector: NSView, NSCollectionViewDataSource {
 
     /// The document changed: a page went, came back or turned, or the file
     /// was read again.
-    func reload(_ document: PDFDocument) {
+    func reload(_ document: PDFDocument, copy: PDFDocument?) {
         let selected = selectedIndex ?? 0
         self.document = document
+        self.copy = copy.map(OffThread.init)
+        version += 1
+        waiting = []
         kept.removeAllObjects()
         grid.reloadData()
         select(selected, scrollingToIt: false)
@@ -95,32 +120,72 @@ final class PageSelector: NSView, NSCollectionViewDataSource {
         let index = indexPath.item
         item.show(number: index + 1, size: Self.shownSize(of: page), image: kept.object(forKey: index as NSNumber))
         if item.image == nil {
-            // Once the scrolling has had its turn; a cell that has moved on
-            // to another page by then doesn't draw this one.
-            DispatchQueue.main.async { [weak self, weak item] in
-                MainActor.assumeIsolated {
-                    guard let self, let item, item.number == index + 1, item.image == nil else { return }
-                    item.image = self.draw(index)
-                }
-            }
+            waiting.append(Wanted(index: index, item: item))
+            drawNext()
         }
         return item
     }
 
+    /// Draws the next page some cell still wants, one per turn of the run loop
+    /// on this thread, so scrolling and keys get theirs in between.
+    private func drawNext() {
+        guard !isDrawing else { return }
+        while !waiting.isEmpty {
+            let wanted = waiting.removeFirst()
+            // A cell that has moved on to another page doesn't draw this one.
+            guard let item = wanted.item, item.number == wanted.index + 1, item.image == nil else { continue }
+            if let image = kept.object(forKey: wanted.index as NSNumber) {
+                item.image = image  // it went and came back
+                continue
+            }
+            isDrawing = true
+            return draw(wanted)
+        }
+    }
+
+    private func draw(_ wanted: Wanted) {
+        let index = wanted.index, version = self.version, scale = window?.backingScaleFactor ?? 2
+        if let copy {
+            Self.drawing.async { [weak self] in
+                let image = OffThread(copy.value.page(at: index).flatMap { Self.quickImage(of: $0, scale: scale) })
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { self?.finish(wanted, image.value, version) }
+                }
+            }
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let current = version == self.version
+                    self.finish(wanted, current ? self.document.page(at: index).flatMap { Self.image(of: $0, scale: scale) } : nil, version)
+                }
+            }
+        }
+    }
+
+    private func finish(_ wanted: Wanted, _ image: NSImage?, _ drawnVersion: Int) {
+        isDrawing = false
+        if drawnVersion == version, let image {
+            kept.setObject(image, forKey: wanted.index as NSNumber)
+            drawn += 1
+            if let item = wanted.item, item.number == wanted.index + 1 { item.image = image }
+        }
+        drawNext()
+    }
+
     /// The size a page takes in the grid, turned as it is shown.
-    private static func shownSize(of page: PDFPage) -> NSSize {
+    private nonisolated static func shownSize(of page: PDFPage) -> NSSize {
         var size = page.bounds(for: .cropBox).size
         if page.rotation % 180 != 0 { size = NSSize(width: size.height, height: size.width) }
         let scale = min(thumbnail.width / max(size.width, 1), thumbnail.height / max(size.height, 1))
         return NSSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
     }
 
-    private func draw(_ index: Int) -> NSImage? {
-        guard let page = document.page(at: index),
-              let image = Self.image(of: page, scale: window?.backingScaleFactor ?? 2) else { return nil }
-        kept.setObject(image, forKey: index as NSNumber)
-        drawn += 1
-        return image
+    /// `page` drawn small from the file as it was read: PDFPage's thumbnail
+    /// takes about a quarter of the time of drawing the page.
+    nonisolated static func quickImage(of page: PDFPage, scale: CGFloat) -> NSImage? {
+        let size = shownSize(of: page)
+        return page.thumbnail(of: NSSize(width: size.width * scale, height: size.height * scale), for: .cropBox)
     }
 
     /// `page` drawn small, as it is shown. PDFKit, drawing a turned page off
@@ -147,6 +212,12 @@ final class PageSelector: NSView, NSCollectionViewDataSource {
         }
         return context.makeImage().map { NSImage(cgImage: $0, size: size) }
     }
+}
+
+/// Hands a value to another thread, which alone touches it from then on.
+private struct OffThread<Value>: @unchecked Sendable {
+    let value: Value
+    init(_ value: Value) { self.value = value }
 }
 
 /// The grid itself: a click on a page selects it, a double click chooses it.
