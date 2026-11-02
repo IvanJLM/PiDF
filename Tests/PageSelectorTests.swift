@@ -77,12 +77,19 @@ final class PageSelectorTests: XCTestCase {
         try flags([], in: window)
         XCTAssertNil(controller.pageSelector, "⌃⌥⌘")
 
+        // The click lands on a note, which PiDF handles itself: PDFView would
+        // take a ⌃-click for a right click and wait in its context menu.
+        let page = try XCTUnwrap(controller.pdf?.page(at: 0))
+        let note = controller.add(note: "Click here", at: NSPoint(x: 100, y: 600), on: page)
+        controller.pdfView.select(nil)
+        let inWindow = controller.pdfView.convert(controller.pdfView.convert(NSPoint(x: note.bounds.midX, y: note.bounds.midY), from: page), to: nil)
         try flags([.control, .option], in: window)
         window.sendEvent(try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseDown, location: NSPoint(x: 100, y: 100), modifierFlags: [.control, .option], timestamp: 0,
+            with: .leftMouseDown, location: inWindow, modifierFlags: [.control, .option], timestamp: 0,
             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)))
+        XCTAssertTrue(controller.pdfView.selectedNote === note, "the click went to the note")
         window.sendEvent(try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseUp, location: NSPoint(x: 100, y: 100), modifierFlags: [.control, .option], timestamp: 0,
+            with: .leftMouseUp, location: inWindow, modifierFlags: [.control, .option], timestamp: 0,
             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 0)))
         try flags([], in: window)
         XCTAssertNil(controller.pageSelector, "⌃⌥ click")
