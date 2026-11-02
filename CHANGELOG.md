@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.9.0 — 2026-11-02
+
+- When another app or the sync saves a new version of the file while there
+  are marks not saved yet, PiDF asks before they go: Keep My Marks writes them
+  over the other version, Use the New File drops them. Until now they were
+  lost without a word. A tab in the background asks when it comes back.
+- Find reads the file on other threads and keeps only what's on screen. A
+  3,000-page manual is searched in 1.6 s instead of 5.7 s, with 77 MB at most
+  instead of 1.2 GB, and the app stays free meanwhile. It finds what it found
+  before. It also works again after a tab wrote its marks in the background;
+  until now it showed the old matches and ⌘G stopped.
+- The page selector opens at once and fills in its pages as they're drawn, on
+  another thread. Pages of plans or photos held up the app for up to 5.5 s.
+- Closing a tab with marks is instant: the file is written behind it, and if
+  that fails the document comes back with its marks. Coming back to a tab
+  whose marks are being written doesn't wait for the write either.
+- Highlight in the Edit menu with a whole manual selected takes 0.2 s instead
+  of 34 s.
+- A save keeps the exact spot on the page, not only the page.
+
 ## 1.8.0 — 2026-11-01
 
 - ⌃⌥ alone, pressed and let go, shows all the pages in a grid, starting at
