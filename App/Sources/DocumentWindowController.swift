@@ -250,9 +250,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         var pageIndex: Int
         var scale: CGFloat
         var autoScales: Bool
-        /// A new version of the file arrived while in the background: its
-        /// matches have to be found again.
+        /// The document was read again while in the background, another
+        /// app's version or PiDF's own write: its matches have to be found again.
         var reloaded = false
+        /// Another app saved the file while changes wait to be written here:
+        /// the question comes when the tab does.
+        var newVersionWaiting = false
     }
 
     private var parked: Parked?
@@ -326,6 +329,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         if saved.reloaded { findBar?.refresh() } else { findBar?.reapply() }
         updatePageNumber()
         if saved.document.isLocked && window?.attachedSheet == nil { askForPassword() }
+        if saved.newVersionWaiting { reload() }
     }
 
     func windowDidChangeOcclusionState(_ notification: Notification) { scheduleParking() }
@@ -373,9 +377,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     // MARK: Changes made by other apps
 
-    /// Shows the new version of the file at the same page and zoom.
+    /// Shows the new version of the file at the same page and zoom. Changes
+    /// not written yet exist only in the document shown: the answer comes first.
     func reload() {
         guard let fresh = PDFDocument(url: url) else { return }  // still being written: wait for the next change
+        if hasUnsavedAnnotations { return askAboutNewVersion() }
         // A deleted page put back into another app's version would land among other pages.
         window?.undoManager?.removeAllActions()
         if fresh.isLocked, let password { _ = fresh.unlock(withPassword: password) }
@@ -386,6 +392,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             parked?.destination = nil
             parked?.pageIndex = index
             parked?.reloaded = true
+            parked?.newVersionWaiting = false
             onReload?()
             return
         }
@@ -402,6 +409,39 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             findBar?.refresh()
         }
         onReload?()
+    }
+
+    private var isAskingAboutNewVersion = false
+
+    /// Another app saved the file and the marks made here aren't in it. Either
+    /// version would be lost, so that is for the person reading to say.
+    private func askAboutNewVersion() {
+        if parked != nil {
+            parked?.newVersionWaiting = true
+            return
+        }
+        guard let window, !isAskingAboutNewVersion else { return }
+        isAskingAboutNewVersion = true
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Another app changed “\(url.lastPathComponent)”."
+        alert.informativeText = "Your highlights, notes and page changes aren’t saved yet. Keeping them replaces the other app’s version; the new file doesn’t have them."
+        alert.addButton(withTitle: "Keep My Marks")
+        alert.addButton(withTitle: "Use the New File")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.isAskingAboutNewVersion = false
+                guard !self.isClosed else { return }
+                if response == .alertSecondButtonReturn {
+                    self.savedChangeCount = self.changeCount
+                    window.isDocumentEdited = false
+                    self.reload()
+                } else {
+                    self.saveDocument(nil)
+                }
+            }
+        }
     }
 
     // MARK: Password
@@ -981,6 +1021,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
                 parked?.destination = nil
             }
             parked?.document = fresh
+            parked?.reloaded = true
             return
         }
         let index = pageIndex
