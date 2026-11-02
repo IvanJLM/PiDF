@@ -382,13 +382,57 @@ final class AnnotationTests: XCTestCase {
         XCTAssertEqual(notes(on: first.pdf?.page(at: 2)).first?.contents, "behind")
     }
 
-    func testClosingSavesFirst() async throws {
+    func testClosingIsAtOnceAndTheMarksAreWrittenBehind() async throws {
         let (controller, url) = try open()
         controller.add(note: "closing", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(controller.pdf?.page(at: 0)))
         controller.window?.performClose(nil)
-        await waitUntil { self.app.controllers.isEmpty }
-        XCTAssertTrue(app.controllers.isEmpty)
+        XCTAssertTrue(app.controllers.isEmpty, "gone without waiting for the write")
+        await waitUntil { self.notes(on: PDFDocument(url: url)?.page(at: 0)).first?.contents == "closing" }
         XCTAssertEqual(notes(on: PDFDocument(url: url)?.page(at: 0)).first?.contents, "closing")
+    }
+
+    func testQuittingWaitsForTheWritesBehind() throws {
+        let (controller, url) = try open()
+        controller.add(note: "quitting", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(controller.pdf?.page(at: 0)))
+        controller.window?.performClose(nil)
+        XCTAssertEqual(app.applicationShouldTerminate(NSApp), .terminateNow)
+        XCTAssertEqual(notes(on: PDFDocument(url: url)?.page(at: 0)).first?.contents, "quitting", "in the file before quitting")
+    }
+
+    func testAWriteBehindThatFailsBringsTheMarksBack() async throws {
+        let folder = try Fixtures.folder(self)
+        let url = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 2)
+        let controller = app.open([url], nextTo: nil)[0]
+        controller.add(note: "kept", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(controller.pdf?.page(at: 0)))
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+        addTeardownBlock { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
+        controller.window?.performClose(nil)
+        await waitUntil { self.app.controllers.count == 1 }
+        let back = try XCTUnwrap(app.controllers.first)
+        XCTAssertFalse(back === controller)
+        XCTAssertTrue(back.hasUnsavedAnnotations)
+        XCTAssertEqual(notes(on: back.pdf?.page(at: 0)).first?.contents, "kept")
+        await waitUntil { back.window?.attachedSheet != nil }
+        let sheet = try XCTUnwrap(back.window?.attachedSheet, "it says so")
+        back.window?.endSheet(sheet)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
+        XCTAssertTrue(back.saveAnnotations())
+        XCTAssertEqual(notes(on: PDFDocument(url: url)?.page(at: 0)).first?.contents, "kept")
+    }
+
+    func testComingBackToATabStillBeingWrittenDoesNotWait() async throws {
+        let (controller, url) = try open((1...600).map { "page \($0) text" })
+        controller.go(toIndex: 300)
+        controller.add(note: "long write", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(controller.pdf?.page(at: 300)))
+        controller.park()
+        let started = CFAbsoluteTimeGetCurrent()
+        controller.unpark()
+        XCTAssertLessThan(CFAbsoluteTimeGetCurrent() - started, 0.3, "the app goes on while the file is written")
+        await waitUntil(20) { !controller.isParked }
+        XCTAssertFalse(controller.isParked, "shown once written")
+        XCTAssertEqual(controller.pageIndex, 300)
+        XCTAssertFalse(controller.hasUnsavedAnnotations)
+        XCTAssertEqual(notes(on: PDFDocument(url: url)?.page(at: 300)).first?.contents, "long write")
     }
 
     // MARK: A new version of the file while marks wait to be written

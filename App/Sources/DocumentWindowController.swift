@@ -312,7 +312,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     func unpark() {
         guard parked != nil else { return }
-        waitForBackgroundSave()  // never shown while another thread writes it
+        // Never shown while another thread writes it. A long write isn't waited
+        // for: the tab shows once it is done (see finish).
+        if let save = saveInFlight {
+            guard save.group.wait(timeout: .now() + 0.05) == .success else { return }
+            finish(save)
+        }
         guard let saved = parked else { return }
         parked = nil
         show(saved.document)
@@ -485,28 +490,25 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     // MARK: Window
 
-    /// ⌘W, the tab's close button: the marks go into the file first.
+    /// ⌘W, the tab's close button: the window goes at once, and the marks
+    /// are written behind it (seconds, for a long manual).
+    private var writesBehind = false
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        if saveAnnotations(showingResult: false) { return true }
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "The highlights and notes couldn’t be saved in “\(url.lastPathComponent)”."
-        alert.informativeText = "Closing loses them."
-        alert.addButton(withTitle: "Close Anyway")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
+        writesBehind = true
+        return true
     }
 
     func windowWillClose(_ notification: Notification) {
         rememberFrame()
         isClosed = true
         closePageSelector()
-        waitForBackgroundSave()
         rememberPosition()
+        findBar?.clear()
+        if writesBehind { writeBehind() } else { waitForBackgroundSave() }
         chrome.stop()
         watcher?.stop()
         watcher = nil
-        findBar?.clear()
         window?.undoManager?.removeAllActions()  // lets the deleted pages go
         if let pageObserver { NotificationCenter.default.removeObserver(pageObserver) }
         pageObserver = nil
@@ -972,11 +974,23 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     @objc func saveDocument(_ sender: Any?) {
         guard !saveAnnotations(), let window else { return }
+        Self.saveFailedAlert(for: url, "Check that the file can be written, then save again.").beginSheetModal(for: window)
+    }
+
+    static func saveFailedAlert(for url: URL, _ advice: String) -> NSAlert {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "The highlights and notes couldn’t be saved in “\(url.lastPathComponent)”."
-        alert.informativeText = "Check that the file can be written, then save again."
-        alert.beginSheetModal(for: window)
+        alert.informativeText = advice
+        return alert
+    }
+
+    /// Back after its window closed, because the marks couldn't be written
+    /// then (see AppDelegate.reopen).
+    func showMarksNotSaved() {
+        annotationsChanged()
+        guard let window else { return }
+        Self.saveFailedAlert(for: url, "They’re still here. Check that the file can be written, then save again.").beginSheetModal(for: window)
     }
 
     /// The tab went to the background and its document is off screen: the
@@ -986,12 +1000,54 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         let save = SaveInFlight(version: changeCount, document: document)
         saveInFlight = save
         watcher?.expectOwnChange()
+        start(save) { self.finish(save) }
+    }
+
+    /// Writes on another thread, at the priority of something being waited for.
+    private func start(_ save: SaveInFlight, then done: @escaping @MainActor () -> Void) {
         let url = self.url
         save.group.enter()
-        DispatchQueue.global(qos: .utility).async {
+        DispatchQueue.global(qos: .userInitiated).async {
             save.fresh = Self.write(save.document, to: url)
             save.group.leave()
-            DispatchQueue.main.async { MainActor.assumeIsolated { self.finish(save) } }
+            DispatchQueue.main.async { MainActor.assumeIsolated { done() } }
+        }
+    }
+
+    /// The writes of windows already gone, with where they go.
+    private static var writingBehind: [(save: SaveInFlight, url: URL)] = []
+
+    /// The window has gone: the write running for a tab in the background is
+    /// left to finish, or one starts for the marks not saved yet. If it fails,
+    /// the document comes back on screen with them.
+    private func writeBehind() {
+        let save: SaveInFlight
+        if let running = saveInFlight {
+            save = running
+        } else if hasUnsavedAnnotations, let document = pdf {
+            pdfView.document = nil  // nothing touches it while another thread writes it
+            save = SaveInFlight(version: changeCount, document: document)
+            start(save) {}
+        } else {
+            return
+        }
+        saveInFlight = nil
+        let url = self.url
+        Self.writingBehind.append((save, url))
+        save.group.notify(queue: .main) { MainActor.assumeIsolated { Self.finishWritingBehind(save) } }
+    }
+
+    private static func finishWritingBehind(_ save: SaveInFlight) {
+        guard let index = writingBehind.firstIndex(where: { $0.save === save }) else { return }
+        let url = writingBehind.remove(at: index).url
+        if save.fresh == nil { (NSApp.delegate as? AppDelegate)?.reopen(save.document, at: url) }
+    }
+
+    /// Quitting: what windows already closed are writing gets to the file first.
+    static func finishWritesBehind() {
+        for (save, _) in writingBehind {
+            save.group.wait()
+            finishWritingBehind(save)
         }
     }
 
@@ -1007,6 +1063,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         // Marks made since the write began stay in the document shown; the
         // next save writes them.
         if !hasUnsavedAnnotations { replace(with: fresh) }
+        scheduleParking()  // a tab that came back during the write shows now
     }
 
     /// Nothing touches the document while another thread writes it.

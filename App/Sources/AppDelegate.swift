@@ -56,11 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// ⌘Q, logging out: the marks go into their files first.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        DocumentWindowController.finishWritesBehind()
         for controller in controllers where !controller.saveAnnotations() {
-            let alert = NSAlert()
-            alert.alertStyle = .warning
-            alert.messageText = "The highlights and notes couldn’t be saved in “\(controller.url.lastPathComponent)”."
-            alert.informativeText = "Quitting loses them."
+            let alert = DocumentWindowController.saveFailedAlert(for: controller.url, "Quitting loses them.")
             alert.addButton(withTitle: "Quit Anyway")
             alert.addButton(withTitle: "Cancel")
             if alert.runModal() != .alertFirstButtonReturn { return .terminateCancel }
@@ -93,14 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 report(url)
                 continue
             }
-            let controller = DocumentWindowController(url: url, document: document)
-            controller.onClose = { [weak self] closed in
-                self?.controllers.removeAll { $0 === closed }
-            }
-            controller.onDrop = { [weak self] urls, window in
-                self?.open(urls, nextTo: window)
-            }
-            controllers.append(controller)
+            let controller = makeController(url: url, document: document)
             controller.present(nextTo: anchor)
             anchor = controller.window
             opened.append(controller)
@@ -111,6 +102,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if controllers.isEmpty && !hostingTests && !settingDefault { NSApp.terminate(nil) }
         return opened
+    }
+
+    private func makeController(url: URL, document: PDFDocument) -> DocumentWindowController {
+        let controller = DocumentWindowController(url: url, document: document)
+        controller.onClose = { [weak self] closed in
+            self?.controllers.removeAll { $0 === closed }
+        }
+        controller.onDrop = { [weak self] urls, window in
+            self?.open(urls, nextTo: window)
+        }
+        controllers.append(controller)
+        return controller
+    }
+
+    /// A document whose marks couldn't be written once its window had gone:
+    /// back on screen with them.
+    func reopen(_ document: PDFDocument, at url: URL) {
+        let controller = makeController(url: url, document: document)
+        controller.present(nextTo: frontWindow)
+        controller.showMarksNotSaved()
     }
 
     /// The window new documents join as tabs.
