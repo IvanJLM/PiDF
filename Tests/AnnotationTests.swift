@@ -57,7 +57,7 @@ final class AnnotationTests: XCTestCase {
         XCTAssertEqual(covered.width, bounds.width, accuracy: 0.5)
         XCTAssertEqual(covered.midY, bounds.midY, accuracy: 0.5)
         XCTAssertTrue((controller.pdfView.currentSelection?.string ?? "").isEmpty, "the selection goes, the highlight stays")
-        XCTAssertTrue(controller.hasUnsavedAnnotations)
+        XCTAssertTrue(controller.hasUnsavedChanges)
         XCTAssertEqual(controller.window?.isDocumentEdited, true)
 
         // Part of it selected again: ⌃H removes it.
@@ -95,7 +95,7 @@ final class AnnotationTests: XCTestCase {
         XCTAssertFalse(controller.validateMenuItem(item(#selector(DocumentWindowController.toggleHighlight(_:)))))
         controller.toggleHighlight(nil)
         XCTAssertTrue(highlights(on: controller.pdf?.page(at: 0)).isEmpty)
-        XCTAssertFalse(controller.hasUnsavedAnnotations)
+        XCTAssertFalse(controller.hasUnsavedChanges)
     }
 
     // MARK: Notes
@@ -169,7 +169,7 @@ final class AnnotationTests: XCTestCase {
         XCTAssertEqual(moved.bounds.minX, 100 + (endPage.x - startPage.x), accuracy: 0.5)
         XCTAssertEqual(moved.bounds.maxY, 500 + (endPage.y - startPage.y), accuracy: 0.5)
         XCTAssertTrue(view.selectedNote === note)
-        XCTAssertTrue(controller.hasUnsavedAnnotations)
+        XCTAssertTrue(controller.hasUnsavedChanges)
     }
 
     // MARK: Note type and lines
@@ -336,8 +336,8 @@ final class AnnotationTests: XCTestCase {
         controller.add(note: "kept", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(shown.page(at: 0)))
         XCTAssertTrue(controller.validateMenuItem(item(#selector(DocumentWindowController.saveDocument(_:)))))
 
-        XCTAssertTrue(controller.saveAnnotations())
-        XCTAssertFalse(controller.hasUnsavedAnnotations)
+        XCTAssertTrue(controller.saveChanges())
+        XCTAssertFalse(controller.hasUnsavedChanges)
         XCTAssertEqual(controller.window?.isDocumentEdited, false)
         XCTAssertFalse(controller.validateMenuItem(item(#selector(DocumentWindowController.saveDocument(_:)))))
 
@@ -363,6 +363,25 @@ final class AnnotationTests: XCTestCase {
         XCTAssertEqual(reloads, 1)
     }
 
+    func testASaveKeepsTheExactSpotNotOnlyThePage() async throws {
+        let (controller, _) = try open((1...6).map { "page \($0)" })
+        controller.actualSize(nil)
+        controller.go(toIndex: 3)
+        let clipView = try XCTUnwrap(controller.pdfView.documentView?.enclosingScrollView?.contentView)
+        clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: clipView.bounds.minY - 300))  // down into the page
+        await wait(0.1)
+        let before = try XCTUnwrap(controller.pdfView.currentDestination)
+        XCTAssertEqual(before.page.flatMap { controller.pdf?.index(for: $0) }, controller.pageIndex)
+        let index = controller.pageIndex
+        controller.add(note: "here", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(controller.pdf?.page(at: index)))
+        XCTAssertTrue(controller.saveChanges())
+        await wait(0.1)
+        let after = try XCTUnwrap(controller.pdfView.currentDestination)
+        XCTAssertEqual(controller.pageIndex, index)
+        XCTAssertEqual(controller.pdfView.scaleFactor, 1, accuracy: 0.01, "same zoom")
+        XCTAssertEqual(after.point.y, before.point.y, accuracy: 2, "same point on the page")
+    }
+
     func testBackgroundTabWritesItsMarksAndKeepsThem() async throws {
         let folder = try Fixtures.folder(self)
         let a = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 3)
@@ -373,8 +392,8 @@ final class AnnotationTests: XCTestCase {
         _ = app.open([b], nextTo: nil)[0]
         await waitUntil { first.isParked }
         XCTAssertTrue(first.isParked)
-        await waitUntil { !first.hasUnsavedAnnotations }
-        XCTAssertFalse(first.hasUnsavedAnnotations, "written while in the background")
+        await waitUntil { !first.hasUnsavedChanges }
+        XCTAssertFalse(first.hasUnsavedChanges, "written while in the background")
         XCTAssertEqual(notes(on: PDFDocument(url: a)?.page(at: 2)).first?.contents, "behind")
         first.bringToFront()
         await waitUntil { !first.isParked }
@@ -410,13 +429,13 @@ final class AnnotationTests: XCTestCase {
         await waitUntil { self.app.controllers.count == 1 }
         let back = try XCTUnwrap(app.controllers.first)
         XCTAssertFalse(back === controller)
-        XCTAssertTrue(back.hasUnsavedAnnotations)
+        XCTAssertTrue(back.hasUnsavedChanges)
         XCTAssertEqual(notes(on: back.pdf?.page(at: 0)).first?.contents, "kept")
         await waitUntil { back.window?.attachedSheet != nil }
         let sheet = try XCTUnwrap(back.window?.attachedSheet, "it says so")
         back.window?.endSheet(sheet)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
-        XCTAssertTrue(back.saveAnnotations())
+        XCTAssertTrue(back.saveChanges())
         XCTAssertEqual(notes(on: PDFDocument(url: url)?.page(at: 0)).first?.contents, "kept")
     }
 
@@ -431,7 +450,7 @@ final class AnnotationTests: XCTestCase {
         await waitUntil(20) { !controller.isParked }
         XCTAssertFalse(controller.isParked, "shown once written")
         XCTAssertEqual(controller.pageIndex, 300)
-        XCTAssertFalse(controller.hasUnsavedAnnotations)
+        XCTAssertFalse(controller.hasUnsavedChanges)
         XCTAssertEqual(notes(on: PDFDocument(url: url)?.page(at: 300)).first?.contents, "long write")
     }
 
@@ -454,11 +473,11 @@ final class AnnotationTests: XCTestCase {
         await waitUntil { controller.window?.attachedSheet != nil }
         XCTAssertNotNil(controller.window?.attachedSheet, "asked")
         XCTAssertEqual(reloads, 0, "the document on screen stays until the answer")
-        XCTAssertTrue(controller.hasUnsavedAnnotations)
+        XCTAssertTrue(controller.hasUnsavedChanges)
         XCTAssertEqual(notes(on: controller.pdf?.page(at: 0)).first?.contents, "mine")
 
         try await answer(controller, .alertFirstButtonReturn)  // Keep My Marks
-        XCTAssertFalse(controller.hasUnsavedAnnotations)
+        XCTAssertFalse(controller.hasUnsavedChanges)
         XCTAssertEqual(controller.window?.isDocumentEdited, false)
         let written = try XCTUnwrap(PDFDocument(url: url))
         XCTAssertEqual(written.pageCount, 2, "the document with the marks replaced the other version")
@@ -477,7 +496,7 @@ final class AnnotationTests: XCTestCase {
         try Fixtures.pdf(at: url, pages: ["from another app"])
         try await answer(controller, .alertSecondButtonReturn)  // Use the New File
         XCTAssertEqual(reloads, 1)
-        XCTAssertFalse(controller.hasUnsavedAnnotations)
+        XCTAssertFalse(controller.hasUnsavedChanges)
         XCTAssertEqual(controller.window?.isDocumentEdited, false)
         XCTAssertEqual(controller.pdf?.pageCount, 1, "the other app's version on screen")
         XCTAssertTrue(notes(on: controller.pdf?.page(at: 0)).isEmpty)
@@ -508,7 +527,7 @@ final class AnnotationTests: XCTestCase {
         app.open([try Fixtures.pdf(in: try Fixtures.folder(self), name: "b.pdf", pageCount: 1)], nextTo: nil)
         await waitUntil { first.isParked }
         await wait(0.5)
-        XCTAssertTrue(first.hasUnsavedAnnotations)
+        XCTAssertTrue(first.hasUnsavedChanges)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
         try Fixtures.pdf(at: a, pages: ["from another app"])
         await wait(0.6)

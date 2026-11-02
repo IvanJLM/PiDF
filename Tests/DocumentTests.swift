@@ -313,7 +313,7 @@ final class BackgroundTabTests: XCTestCase {
         await waitUntil { first.findBar?.matches.count == 2 && first.findBar?.isSearching == false }
         first.add(note: "behind", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(first.pdf?.page(at: 0)))
         app.open([try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 2)], nextTo: nil)
-        await waitUntil { first.isParked && !first.hasUnsavedAnnotations }
+        await waitUntil { first.isParked && !first.hasUnsavedChanges }
         first.bringToFront()
         await waitUntil {
             !first.isParked && first.findBar?.isSearching == false && first.findBar?.matches.count == 2 && first.pdfView.highlightedSelections?.isEmpty == false
@@ -355,6 +355,7 @@ final class BackgroundTabTests: XCTestCase {
         try Fixtures.pdf(at: url, pages: ["1", "2", "3"])
         await waitUntil { reloaded }
         XCTAssertEqual(first.pdf?.pageCount, 3)
+        XCTAssertEqual(first.pageIndex, 2, "already, for the reading position saved before it comes back")
         first.bringToFront()
         await waitUntil { !first.isParked }
         XCTAssertEqual(first.pageIndex, 2, "the new last page")

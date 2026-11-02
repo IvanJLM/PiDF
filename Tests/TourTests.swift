@@ -69,7 +69,7 @@ final class TourTests: XCTestCase {
         first.add(note: "A note made on the rotated page", at: NSPoint(x: 200, y: 400), on: page)
         first.pdfView.select(nil)
         await shoot(window, "11-rotated", into: folder)
-        first.saveAnnotations()
+        first.saveChanges()
         await shoot(window, "11-rotated-saved", into: folder)
         first.printDocument(nil)
         await wait(1)

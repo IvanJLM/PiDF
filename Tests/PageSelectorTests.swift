@@ -301,7 +301,7 @@ final class PageSelectorTests: XCTestCase {
         controller.togglePageSelector(nil)
         let again = try XCTUnwrap(controller.pageSelector)
         XCTAssertFalse(again.drawsOffThread, "the file still has the page")
-        XCTAssertTrue(controller.saveAnnotations())
+        XCTAssertTrue(controller.saveChanges())
         XCTAssertTrue(again.drawsOffThread, "saved: the file is the same again")
         await waitUntil { self.images(in: again).count == 4 }
         XCTAssertEqual(images(in: again).count, 4)
@@ -325,7 +325,7 @@ final class PageSelectorTests: XCTestCase {
         let page = try XCTUnwrap(controller.pdf?.page(at: 0))
         controller.rotatePageRight(nil)
         controller.add(note: "A note wider than it is high", at: NSPoint(x: 100, y: 300), on: page, font: NSFont(name: "Helvetica", size: 12))
-        XCTAssertTrue(controller.saveAnnotations())
+        XCTAssertTrue(controller.saveChanges())
         let saved = try XCTUnwrap(PDFDocument(url: url)?.page(at: 0))
         let image = try XCTUnwrap(PageSelector.quickImage(of: saved, scale: 2))
         XCTAssertGreaterThan(image.size.width, image.size.height, "A4 turned: landscape")

@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ⌘Q, logging out: the marks go into their files first.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         DocumentWindowController.finishWritesBehind()
-        for controller in controllers where !controller.saveAnnotations() {
+        for controller in controllers where !controller.saveChanges(showingResult: false) {
             let alert = DocumentWindowController.saveFailedAlert(for: controller.url, "Quitting loses them.")
             alert.addButton(withTitle: "Quit Anyway")
             alert.addButton(withTitle: "Cancel")

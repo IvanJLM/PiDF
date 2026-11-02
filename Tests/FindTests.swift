@@ -220,7 +220,7 @@ final class FindTests: XCTestCase {
         XCTAssertTrue(bar.isSearching)
         first.park()
         XCTAssertFalse(bar.isSearching, "another thread writes the document now")
-        await waitUntil { !first.hasUnsavedAnnotations }
+        await waitUntil { !first.hasUnsavedChanges }
         first.unpark()
         await waitUntil { !bar.isSearching }
         XCTAssertEqual(bar.matches.count, 400)

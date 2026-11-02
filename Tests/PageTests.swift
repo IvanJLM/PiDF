@@ -38,7 +38,7 @@ final class PageTests: XCTestCase {
         XCTAssertEqual(texts(controller.pdf), ["Page 1", "Page 3"])
         XCTAssertEqual(controller.pageIndex, 1, "the next page takes its place on screen")
         XCTAssertEqual(controller.window?.subtitle, "Page 2 of 2")
-        XCTAssertTrue(controller.hasUnsavedAnnotations)
+        XCTAssertTrue(controller.hasUnsavedChanges)
         XCTAssertEqual(controller.window?.isDocumentEdited, true)
         // ⌘Z in the Edit menu reaches the window's undo.
         let window = try XCTUnwrap(controller.window)
@@ -57,13 +57,13 @@ final class PageTests: XCTestCase {
         let (controller, url) = try open(pages: 3)
         controller.go(toIndex: 0)
         controller.deletePage(nil)
-        XCTAssertTrue(controller.saveAnnotations())
+        XCTAssertTrue(controller.saveChanges())
         XCTAssertEqual(texts(PDFDocument(url: url)), ["Page 2", "Page 3"])
 
         // The window now shows the file read again; the page goes into it.
         controller.window?.undoManager?.undo()
         XCTAssertEqual(texts(controller.pdf), ["Page 1", "Page 2", "Page 3"])
-        XCTAssertTrue(controller.saveAnnotations())
+        XCTAssertTrue(controller.saveChanges())
         XCTAssertEqual(texts(PDFDocument(url: url)), ["Page 1", "Page 2", "Page 3"])
     }
 
@@ -72,7 +72,7 @@ final class PageTests: XCTestCase {
         XCTAssertFalse(controller.validateMenuItem(deleteItem))
         controller.deletePage(nil)
         XCTAssertEqual(controller.pdf?.pageCount, 1)
-        XCTAssertFalse(controller.hasUnsavedAnnotations)
+        XCTAssertFalse(controller.hasUnsavedChanges)
     }
 
     func testReadOnlyFilesAndTheFindFieldKeepTheirPages() throws {
