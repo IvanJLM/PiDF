@@ -695,12 +695,13 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// holds the text of all its pages. Not when the document shown has what
     /// the file hasn't: changes not saved yet, or text recognized in a scan.
     private var fileOpenerForFind: (@Sendable () -> PDFDocument?)? {
-        guard !hasUnsavedAnnotations, !recognizesText else { return nil }
+        guard !hasUnsavedAnnotations, !recognizesText, let pageCount = pdf?.pageCount else { return nil }
         let url = self.url, password = self.password
         return {
             guard let copy = PDFDocument(url: url) else { return nil }
             if copy.isLocked, let password { _ = copy.unlock(withPassword: password) }
-            return copy
+            // Changed on disk meanwhile: the reload that follows searches again.
+            return copy.isLocked || copy.pageCount != pageCount ? nil : copy
         }
     }
 

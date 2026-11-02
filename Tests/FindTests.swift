@@ -114,6 +114,31 @@ final class FindTests: XCTestCase {
         XCTAssertEqual(bar.matches, offScreen)
     }
 
+    func testTheFileIsSearchedInPageOrderEveryTime() async throws {
+        let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent("long.pdf"), pages: (1...300).map { "needle \($0)" })
+        for _ in 1...10 {
+            var pages: [Int] = []
+            var done = false
+            let search = OffScreenSearch(text: "needle", pageCount: 300, open: { PDFDocument(url: url) }) { found, last in
+                pages += found.map(\.page)
+                done = last
+            }
+            search.start()
+            await waitUntil { done }
+            XCTAssertEqual(pages, Array(0..<300), "whichever thread finishes first")
+        }
+    }
+
+    func testASearchWithNoPagesEnds() async throws {
+        var done = false
+        OffScreenSearch(text: "needle", pageCount: 0, open: { nil }) { found, last in
+            XCTAssertTrue(found.isEmpty)
+            done = last
+        }.start()
+        await waitUntil { done }
+        XCTAssertTrue(done, "not “…” for ever")
+    }
+
     func testAPageDeletedAndNotSavedYetIsNotLookedFor() async throws {
         let controller = try open(["needle one", "two", "needle three"])
         controller.deletePage(nil)

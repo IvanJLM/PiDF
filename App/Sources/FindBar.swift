@@ -201,17 +201,20 @@ final class FindBar: NSVisualEffectView, NSSearchFieldDelegate {
 
     private func select(_ index: Int) {
         guard !matches.isEmpty, let pdfView else { return }
-        let index = (index + matches.count) % matches.count
-        guard let selection = selection(for: matches[index]) else { return }
-        current = index
-        pdfView.setCurrentSelection(selection, animate: false)
-        pdfView.go(to: selection)
+        current = (index + matches.count) % matches.count
+        if let selection = selection(for: matches[current]) {
+            pdfView.setCurrentSelection(selection, animate: false)
+            pdfView.go(to: selection)
+        }
         updateHighlightsSoon()
         updateCount()
     }
 
+    /// Nil for a match the page's text doesn't have (a file read while
+    /// another app was changing it).
     private func selection(for match: FindMatch) -> PDFSelection? {
-        pdfView?.document?.page(at: match.page)?.selection(for: match.range)
+        guard let page = pdfView?.document?.page(at: match.page), NSMaxRange(match.range) <= page.numberOfCharacters else { return nil }
+        return page.selection(for: match.range)
     }
 
     /// PDFView's own notification doesn't tell when scrolling brings in a page.
@@ -247,6 +250,10 @@ final class FindBar: NSVisualEffectView, NSSearchFieldDelegate {
         return first...last
     }
 
+    /// Each costs PDFKit almost a millisecond, and a page full of highlights
+    /// (one letter searched) shows nothing more.
+    private static let mostHighlights = 150
+
     /// Only the matches in view have a selection, made as they come into view.
     private func updateHighlights() {
         guard let pdfView, let document = pdfView.document else { return }
@@ -258,8 +265,8 @@ final class FindBar: NSVisualEffectView, NSSearchFieldDelegate {
         for index in pages.map(Array.init) ?? [] {
             guard let page = document.page(at: index) else { continue }
             var match = firstMatch(onPageAt: index)
-            while match < matches.count, matches[match].page == index {
-                if let selection = page.selection(for: matches[match].range) {
+            while match < matches.count, matches[match].page == index, selections.count < Self.mostHighlights {
+                if NSMaxRange(matches[match].range) <= page.numberOfCharacters, let selection = page.selection(for: matches[match].range) {
                     selection.color = .findHighlightColor
                     selections.append(selection)
                 }

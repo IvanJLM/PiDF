@@ -57,6 +57,11 @@ final class OffScreenSearch: @unchecked Sendable {
 
     func start() {
         let threads = min(stretches, Self.threads)
+        guard threads > 0 else {
+            let deliver = self.deliver
+            DispatchQueue.main.async { MainActor.assumeIsolated { deliver([], true) } }
+            return
+        }
         DispatchQueue.global(qos: .userInitiated).async {
             DispatchQueue.concurrentPerform(iterations: threads) { _ in self.work() }
         }
@@ -90,10 +95,12 @@ final class OffScreenSearch: @unchecked Sendable {
         }
     }
 
-    /// Hands over what is ready, in page order, whichever thread got there first.
+    /// Hands over what is ready, in page order, whichever thread got there
+    /// first. Queued for the main thread under the lock, so two threads can't
+    /// queue their stretches the other way round.
     private func finish(_ stretch: Int, _ found: [FindMatch]) {
-        let ready: ([FindMatch], Bool)? = lock.withLock {
-            guard !cancelled else { return nil }
+        lock.withLock {
+            guard !cancelled else { return }
             finished[stretch] = found
             var matches: [FindMatch] = []
             let first = nextToDeliver
@@ -101,10 +108,9 @@ final class OffScreenSearch: @unchecked Sendable {
                 matches += next
                 nextToDeliver += 1
             }
-            return nextToDeliver == first ? nil : (matches, nextToDeliver == stretches)
+            guard nextToDeliver != first else { return }
+            let last = nextToDeliver == stretches, deliver = self.deliver
+            DispatchQueue.main.async { MainActor.assumeIsolated { deliver(matches, last) } }
         }
-        guard let ready else { return }
-        let deliver = self.deliver
-        DispatchQueue.main.async { MainActor.assumeIsolated { deliver(ready.0, ready.1) } }
     }
 }
