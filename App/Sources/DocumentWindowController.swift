@@ -1,84 +1,6 @@
 import AppKit
 import PDFKit
 
-/// The windows PiDF shows documents in, so they can be told from panels.
-final class DocumentWindow: NSWindow {
-    /// ← and → turn a whole page; ↑ and ↓ still scroll a little. ⌃← and ⌃→
-    /// rotate the page, where macOS lets them through (out of the box they
-    /// change Spaces; ⌃⌥← and ⌃⌥→ in the menu always work). Caught here,
-    /// before PDFKit's own views see the key, so it works wherever the click
-    /// left the focus, except while typing in a text field.
-    override func sendEvent(_ event: NSEvent) {
-        followSelectorKeys(event)
-        // A click on a note, and the drag that may follow, are the note's
-        // (select, move, edit), not PDFKit's.
-        if let controller = windowController as? DocumentWindowController {
-            if event.type == .keyDown, controller.handlePageSelectorKey(event) { return }
-            switch event.type {
-            case .leftMouseDown where controller.pdfView.handleClick(event): return
-            case .leftMouseDragged where controller.pdfView.handleDrag(event): return
-            case .leftMouseUp where controller.pdfView.handleRelease(event): return
-            default: break
-            }
-        }
-        if event.type == .keyDown, !(firstResponder is NSText),
-           let controller = windowController as? DocumentWindowController, controller.pageSelector == nil,
-           let key = event.charactersIgnoringModifiers?.unicodeScalars.first.map({ Int($0.value) }) {
-            let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-            switch (key, modifiers) {
-            case (NSLeftArrowFunctionKey, []):
-                controller.goToPreviousPage(nil)
-                return
-            case (NSRightArrowFunctionKey, []):
-                controller.goToNextPage(nil)
-                return
-            case (NSLeftArrowFunctionKey, .control):
-                controller.rotatePageLeft(nil)
-                return
-            case (NSRightArrowFunctionKey, .control):
-                controller.rotatePageRight(nil)
-                return
-            case (0x7F, []), (NSDeleteFunctionKey, []):  // Delete, forward delete
-                if controller.deleteSelectedNote() { return }
-            default:
-                break
-            }
-        }
-        super.sendEvent(event)
-    }
-
-    /// ⌃ and ⌥ held together, then let go with nothing else in between.
-    private var selectorKeysHeld = false
-
-    /// The keys held were part of a shortcut the menu took: ⌃⌥← and ⌃⌥→ may
-    /// never reach this window as key events.
-    func forgetSelectorKeys() { selectorKeysHeld = false }
-
-    /// ⌃⌥ alone opens and closes the page selector, when the keys go up: on
-    /// the way down they may be the start of another shortcut. Only the events
-    /// the window gets anyway: nothing runs while no key is pressed.
-    private func followSelectorKeys(_ event: NSEvent) {
-        switch event.type {
-        case .flagsChanged:
-            let held = event.modifierFlags.intersection([.command, .option, .control, .shift])
-            if held == [.control, .option] {
-                selectorKeysHeld = true
-            } else if held.isEmpty, selectorKeysHeld {
-                selectorKeysHeld = false
-                if !(firstResponder is NSText), attachedSheet == nil {
-                    (windowController as? DocumentWindowController)?.togglePageSelector(nil)
-                }
-            } else if !held.isSubset(of: [.control, .option]) {
-                selectorKeysHeld = false
-            }
-        case .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel:
-            selectorKeysHeld = false
-        default:
-            break
-        }
-    }
-}
-
 /// One document, in its own window or as one tab of a window.
 ///
 /// Highlights and notes are made in the document's own PDFAnnotations and
@@ -145,7 +67,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             self.onDrop?(urls, window)
         }
         chrome = WindowChrome(window: window)
-        pdfView.onNoteMoved = { [weak self] in self?.annotationsChanged() }
+        pdfView.onNoteMoved = { [weak self] in self?.documentChanged() }
         pdfView.onNoteDoubleClicked = { [weak self] note in self?.editNote(note) }
         pageObserver = NotificationCenter.default.addObserver(forName: .PDFViewPageChanged, object: pdfView, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.updatePageNumber() }
@@ -245,10 +167,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// where it was. Its rendered pages, most of a window's memory, go.
     private struct Parked {
         var document: PDFDocument
-        var destination: PDFDestination?
-        var pageIndex: Int
-        var scale: CGFloat
-        var autoScales: Bool
+        var spot: Spot
         /// The document was read again while in the background, another
         /// app's version or PiDF's own write: its matches have to be found again.
         var reloaded = false
@@ -289,11 +208,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         guard parked == nil, let document = pdfView.document, window?.attachedSheet == nil else { return }
         closePageSelector()
         findBar?.interrupt()
-        parked = Parked(document: document, destination: pdfView.currentDestination, pageIndex: pageIndex,
-                        scale: pdfView.scaleFactor, autoScales: pdfView.autoScales)
+        parked = Parked(document: document, spot: spot)
         rememberPosition()  // kept even if the app never gets to quit normally
         pdfView.document = nil
-        saveAnnotationsInBackground()
+        saveChangesInBackground()
     }
 
     func unpark() {
@@ -306,20 +224,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
         guard let saved = parked else { return }
         parked = nil
-        show(saved.document)
-        if saved.autoScales { pdfView.autoScales = true } else { pdfView.scaleFactor = saved.scale }
-        pdfView.layoutDocumentView()
-        // The exact spot on the page, unless it lies on another page than the
-        // one the title bar showed (the top of the window can show the end of
-        // the page before).
-        if let destination = saved.destination, let page = destination.page, page.document === saved.document,
-           saved.document.index(for: page) == saved.pageIndex {
-            pdfView.go(to: destination)
-        } else {
-            go(toIndex: saved.pageIndex)
-        }
+        show(saved.document, at: saved.spot)
         if saved.reloaded { findBar?.refresh() } else { findBar?.reapply() }
-        updatePageNumber()
         if saved.document.isLocked && window?.attachedSheet == nil { askForPassword() }
         if saved.newVersionWaiting { reload() }
     }
@@ -333,9 +239,48 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     // MARK: Page number and reading position
 
     var pageIndex: Int {
-        if let parked { return parked.pageIndex }
+        if let parked { return parked.spot.pageIndex }
         guard let document = pdf, let page = pdfView.currentPage else { return 0 }
         return document.index(for: page)
+    }
+
+    /// Where the document is on screen: the page the title bar shows, the
+    /// exact point when it lies on that page, and the zoom.
+    private struct Spot {
+        var pageIndex: Int
+        var point: NSPoint?
+        var scale: CGFloat
+        var autoScales: Bool
+    }
+
+    private var spot: Spot {
+        if let parked { return parked.spot }
+        let index = pageIndex
+        // The top of the window can show the end of the page before the one
+        // the title bar shows: then the page alone.
+        let destination = pdfView.currentDestination
+        let onPage = destination?.page.map { pdf?.index(for: $0) == index } ?? false
+        return Spot(pageIndex: index, point: onPage ? destination?.point : nil, scale: pdfView.scaleFactor, autoScales: pdfView.autoScales)
+    }
+
+    /// Shows `document` at `spot`, or as near as its pages allow: the one way
+    /// a document comes back on screen (from the background, read again after
+    /// a save or another app's change, unlocked).
+    private func show(_ document: PDFDocument, at spot: Spot) {
+        show(document)
+        if !document.isLocked {
+            if spot.autoScales { pdfView.autoScales = true } else { pdfView.scaleFactor = spot.scale }
+            pdfView.layoutDocumentView()
+            let index = min(spot.pageIndex, max(document.pageCount - 1, 0))
+            if let page = document.page(at: index) {
+                if let point = spot.point, index == spot.pageIndex {
+                    pdfView.go(to: PDFDestination(page: page, at: point))
+                } else {
+                    pdfView.go(to: page)
+                }
+            }
+        }
+        updatePageNumber()
     }
 
     private func updatePageNumber() {
@@ -357,8 +302,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         guard let document = pdf, document.pageCount > 0 else { return }
         let index = min(max(index, 0), document.pageCount - 1)
         if parked != nil {
-            parked?.pageIndex = index
-            parked?.destination = nil
+            parked?.spot.pageIndex = index
+            parked?.spot.point = nil
             return
         }
         guard let page = document.page(at: index) else { return }
@@ -369,35 +314,31 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     // MARK: Changes made by other apps
 
-    /// Shows the new version of the file at the same page and zoom. Changes
+    /// Shows the new version of the file at the same spot and zoom. Changes
     /// not written yet exist only in the document shown: the answer comes first.
     func reload() {
         guard let fresh = PDFDocument(url: url) else { return }  // still being written: wait for the next change
-        if hasUnsavedAnnotations { return askAboutNewVersion() }
+        if hasUnsavedChanges { return askAboutNewVersion() }
         // A deleted page put back into another app's version would land among other pages.
         window?.undoManager?.removeAllActions()
         if fresh.isLocked, let password { _ = fresh.unlock(withPassword: password) }
-        if parked != nil {
-            // In the background: shown when the tab comes back.
-            let index = min(pageIndex, max(fresh.pageCount - 1, 0))
+        if let spot = parked?.spot {
+            // In the background: shown when the tab comes back. The page it
+            // will show, also for the reading position saved meanwhile.
+            let index = min(spot.pageIndex, max(fresh.pageCount - 1, 0))
+            if index != spot.pageIndex { parked?.spot = Spot(pageIndex: index, point: nil, scale: spot.scale, autoScales: spot.autoScales) }
             parked?.document = fresh
-            parked?.destination = nil
-            parked?.pageIndex = index
             parked?.reloaded = true
             parked?.newVersionWaiting = false
             onReload?()
             return
         }
-        let index = pageIndex
-        let autoScales = pdfView.autoScales
-        let scale = pdfView.scaleFactor
+        let spot = self.spot
         findBar?.clear()
-        show(fresh)
+        show(fresh, at: spot)
         if fresh.isLocked {
             if window?.attachedSheet == nil { askForPassword() }
         } else {
-            if autoScales { pdfView.autoScales = true } else { pdfView.scaleFactor = scale }
-            go(toIndex: index)
             findBar?.refresh()
         }
         onReload?()
@@ -465,12 +406,17 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     func unlock(with password: String) -> Bool {
         guard let document = pdf, document.unlock(withPassword: password) else { return false }
         self.password = password  // kept in memory only, to reopen the file when it changes
-        // PDFView lays out a locked document as empty: show it again.
+        // PDFView lays out a locked document as empty: show it again, at the
+        // page it was left at, if any.
         pdfView.document = nil
-        show(document)
-        pdfView.autoScales = true
-        restorePosition()
-        updatePageNumber()
+        if let saved = ReadingPositions.page(for: url) {
+            show(document, at: Spot(pageIndex: saved, point: nil, scale: 1, autoScales: true))
+        } else {
+            show(document)
+            pdfView.autoScales = true
+            updatePageNumber()
+        }
+        findBar?.refresh()
         return true
     }
 
@@ -615,12 +561,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// with it, on another thread. Changes not saved yet are only in the
     /// document shown: nil.
     private func selectorCopy() -> PDFDocument? {
-        guard !hasUnsavedAnnotations, let copy = PDFDocument(url: url) else { return nil }
+        guard !hasUnsavedChanges, let copy = PDFDocument(url: url) else { return nil }
         if copy.isLocked, let password { _ = copy.unlock(withPassword: password) }
         return copy.isLocked || copy.pageCount != pdf?.pageCount ? nil : copy
     }
 
-    private func reloadPageSelector() {
+    func reloadPageSelector() {
         guard let selector = pageSelector, let document = pdf else { return }
         selector.reload(document, copy: selectorCopy())
     }
@@ -682,7 +628,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// holds the text of all its pages. Not when the document shown has what
     /// the file hasn't: changes not saved yet, or text recognized in a scan.
     private var fileOpenerForFind: (@Sendable () -> PDFDocument?)? {
-        guard !hasUnsavedAnnotations, !recognizesText, let pageCount = pdf?.pageCount else { return nil }
+        guard !hasUnsavedChanges, !recognizesText, let pageCount = pdf?.pageCount else { return nil }
         let url = self.url, password = self.password
         return {
             guard let copy = PDFDocument(url: url) else { return nil }
@@ -719,211 +665,16 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
     }
 
-    // MARK: Highlights and notes
-
-    /// Marks can be made while the document is on screen, not protected,
-    /// and in a file PiDF can write back. A protected document would be
-    /// written without its protection.
-    var canAnnotate: Bool {
-        guard parked == nil, let document = pdfView.document, !document.isLocked, !document.isEncrypted else { return false }
-        return FileManager.default.isWritableFile(atPath: url.path)
-    }
-
-    /// The boxes of the lines of `selection`, page by page, in one pass: a
-    /// whole manual selected has a hundred thousand lines.
-    private func lines(of selection: PDFSelection) -> [(PDFPage, [NSRect])] {
-        var boxes: [ObjectIdentifier: [NSRect]] = [:]
-        for line in selection.selectionsByLine() {
-            for page in line.pages { boxes[ObjectIdentifier(page), default: []].append(line.bounds(for: page)) }
-        }
-        return selection.pages.map { ($0, boxes[ObjectIdentifier($0)] ?? []) }
-    }
-
-    /// The highlights under the lines of `selection`, with their pages.
-    private func highlights(under selection: PDFSelection) -> [(PDFPage, PDFAnnotation)] {
-        lines(of: selection).flatMap { page, boxes -> [(PDFPage, PDFAnnotation)] in
-            let marked = page.annotations.filter(Marks.isHighlight)
-            guard !marked.isEmpty else { return [] }
-            // The middle of each line, so a line next to a highlight doesn't count.
-            let rects = boxes.map { $0.insetBy(dx: 0, dy: $0.height / 4) }
-            return marked
-                .filter { annotation in Marks.rects(of: annotation).contains { rect in rects.contains { $0.intersects(rect) } } }
-                .map { (page, $0) }
-        }
-    }
-
-    /// ⌃H: highlights the selected text, or removes the highlights under it.
-    @objc func toggleHighlight(_ sender: Any?) {
-        guard canAnnotate, let selection = pdfView.currentSelection, !selection.pages.isEmpty else { return }
-        let under = highlights(under: selection)
-        if !under.isEmpty {
-            for (page, annotation) in under { page.removeAnnotation(annotation) }
-        } else {
-            for (page, rects) in lines(of: selection) where !rects.isEmpty {
-                page.addAnnotation(Marks.highlight(lines: rects))
-            }
-            pdfView.clearSelection()
-        }
-        annotationsChanged()
-    }
-
-    /// ⌃N: a note where the pointer is (or in the middle of the window when
-    /// the pointer is elsewhere); with a note selected, edits it.
-    @objc func addNote(_ sender: Any?) {
-        guard canAnnotate else { return }
-        if let note = pdfView.selectedNote { return editNote(note) }
-        var inView = pdfView.convert(window?.mouseLocationOutsideOfEventStream ?? .zero, from: nil)
-        if !pdfView.bounds.contains(inView) { inView = NSPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY) }
-        guard let page = pdfView.page(for: inView, nearest: true) else { return }
-        let inPage = pdfView.convert(inView, to: page)
-        askForNoteText(initial: "") { [weak self] text in
-            guard let self, let text, !text.isEmpty else { return }
-            self.add(note: text, at: inPage, on: page)
-        }
-    }
-
-    /// Puts a note saying `text` on `page`, its top left corner at `point`,
-    /// in `font` (the type of the page's text when not given).
-    @discardableResult
-    func add(note text: String, at point: NSPoint, on page: PDFPage, font: NSFont? = nil) -> PDFAnnotation {
-        let note = Marks.note(text, font: font ?? Marks.textFont(on: page), topLeft: point, in: page.bounds(for: .cropBox), rotation: page.rotation)
-        page.addAnnotation(note)
-        pdfView.select(note)
-        annotationsChanged()
-        return note
-    }
-
-    func editNote(_ note: PDFAnnotation) {
-        askForNoteText(initial: note.contents ?? "") { [weak self] text in
-            guard let self, let text else { return }
-            self.replace(note, with: text)
-        }
-    }
-
-    /// A note with new text is a new annotation, in the same place and
-    /// type: PDFKit goes on drawing the saved look of one whose text
-    /// changed. Empty text removes the note.
-    func replace(_ note: PDFAnnotation, with text: String) {
-        guard let page = note.page else { return }
-        let topLeft = Marks.topLeft(of: note.bounds, in: page.bounds(for: .cropBox), rotation: page.rotation)
-        let font = note.font
-        pdfView.select(nil)
-        page.removeAnnotation(note)
-        if text.isEmpty {
-            annotationsChanged()
-        } else {
-            add(note: text, at: topLeft, on: page, font: font)
-        }
-    }
-
-    /// Delete with a note selected; false when there was none.
-    @discardableResult
-    func deleteSelectedNote() -> Bool {
-        guard let note = pdfView.selectedNote, let page = note.page else { return false }
-        pdfView.select(nil)
-        page.removeAnnotation(note)
-        annotationsChanged()
-        return true
-    }
-
-    // MARK: Deleting pages
-
-    /// ⌃D: takes the page on screen out of the document. It leaves the file
-    /// at the next save, as the marks do; ⌘Z puts it back while the window
-    /// is open. The last page stays.
-    @objc func deletePage(_ sender: Any?) {
-        guard canAnnotate, let document = pdf, document.pageCount > 1 else { return }
-        removePage(at: pageIndex)
-    }
-
-    /// Each undo registers its redo, so ⌘Z and ⇧⌘Z go back and forth.
-    private func removePage(at index: Int) {
-        guard parked == nil, let page = pdf?.page(at: index) else { return }
-        pdfView.select(nil)
-        pdf?.removePage(at: index)
-        window?.undoManager?.registerUndo(withTarget: self) { $0.insert(page, at: index) }
-        window?.undoManager?.setActionName("Delete Page")
-        pagesChanged(showing: index)
-    }
-
-    /// The page goes into the document shown, also when that is the file
-    /// read again after a save.
-    private func insert(_ page: PDFPage, at index: Int) {
-        guard parked == nil, let document = pdf else { return }
-        document.insert(page, at: min(index, document.pageCount))
-        window?.undoManager?.registerUndo(withTarget: self) { $0.removePage(at: index) }
-        window?.undoManager?.setActionName("Delete Page")
-        pagesChanged(showing: index)
-    }
-
-    private func pagesChanged(showing index: Int) {
-        annotationsChanged()
-        go(toIndex: index)
-        findBar?.refresh()
-        reloadPageSelector()
-    }
-
-    // MARK: Rotating pages
-
-    /// ⌃⌥← / ⌃⌥→ (and ⌃← / ⌃→, see DocumentWindow): turns the page on screen
-    /// a quarter turn. Saved in the file as the marks are; ⌘Z turns it back.
-    @objc func rotatePageLeft(_ sender: Any?) { rotateCurrentPage(by: -90) }
-    @objc func rotatePageRight(_ sender: Any?) { rotateCurrentPage(by: 90) }
-
-    private func rotateCurrentPage(by degrees: Int) {
-        (window as? DocumentWindow)?.forgetSelectorKeys()
-        guard canAnnotate, pageSelector == nil else { return }
-        rotatePage(at: pageIndex, by: degrees)
-    }
-
-    /// By index, not by page: the document may have been read again after a
-    /// save when an undo comes. The find matches stay valid, so they aren't
-    /// looked for again (that reads the text of every page).
-    private func rotatePage(at index: Int, by degrees: Int) {
-        guard parked == nil, let page = pdf?.page(at: index) else { return }
-        pdfView.select(nil)
-        page.rotation = (page.rotation + degrees + 360) % 360
-        window?.undoManager?.registerUndo(withTarget: self) { $0.rotatePage(at: index, by: -degrees) }
-        window?.undoManager?.setActionName("Rotate Page")
-        annotationsChanged()
-        pdfView.layoutDocumentView()
-        if pdfView.autoScales { pdfView.autoScales = true }
-        go(toIndex: index)
-        reloadPageSelector()
-    }
-
     /// The text box of the note sheet on screen, if any.
-    private(set) var noteEditor: NoteEditor?
+    var noteEditor: NoteEditor?
 
-    private func askForNoteText(initial: String, completion: @escaping (String?) -> Void) {
-        guard let window else { return }
-        let alert = NSAlert()
-        alert.messageText = initial.isEmpty ? "Add Note" : "Edit Note"
-        alert.addButton(withTitle: initial.isEmpty ? "Add" : "Save")
-        alert.addButton(withTitle: "Cancel")
-        alert.informativeText = initial.isEmpty ? "Return adds it; ⌥Return starts a new line." : "Return saves it; ⌥Return starts a new line."
-        let editor = NoteEditor(text: initial)
-        editor.onCommit = { [weak alert] in alert?.buttons.first?.performClick(nil) }
-        editor.onCancel = { [weak alert] in alert?.buttons.last?.performClick(nil) }
-        alert.accessoryView = editor
-        alert.window.initialFirstResponder = editor.textView
-        noteEditor = editor
-        alert.beginSheetModal(for: window) { [weak self] response in
-            MainActor.assumeIsolated {
-                self?.noteEditor = nil
-                guard response == .alertFirstButtonReturn else { return completion(nil) }
-                completion(editor.text)
-            }
-        }
-    }
+    // MARK: Saving the changes into the file
 
-    // MARK: Saving the marks into the file
-
-    /// How many marks have been made and how many the file has, so a save
-    /// knows which state it wrote.
+    /// How many changes have been made (marks, pages deleted or turned) and
+    /// how many the file has, so a save knows which state it wrote.
     private var changeCount = 0
     private var savedChangeCount = 0
-    var hasUnsavedAnnotations: Bool { changeCount != savedChangeCount }
+    var hasUnsavedChanges: Bool { changeCount != savedChangeCount }
     /// A write running on another thread while the tab is in the background.
     private var saveInFlight: SaveInFlight?
 
@@ -940,18 +691,18 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
     }
 
-    private func annotationsChanged() {
+    func documentChanged() {
         changeCount += 1
         window?.isDocumentEdited = true
     }
 
-    /// Writes the marks into the file now, on this thread (⌘S, closing,
-    /// quitting), and shows the file as written unless the window is going
-    /// anyway. False if the file couldn't be written.
+    /// Writes the changes into the file now, on this thread (⌘S, quitting),
+    /// and shows the file as written unless PiDF is quitting. False if the
+    /// file couldn't be written.
     @discardableResult
-    func saveAnnotations(showingResult: Bool = true) -> Bool {
+    func saveChanges(showingResult: Bool = true) -> Bool {
         waitForBackgroundSave()
-        guard hasUnsavedAnnotations else { return true }
+        guard hasUnsavedChanges else { return true }
         guard let document = pdf else { return false }
         let version = changeCount
         watcher?.expectOwnChange()
@@ -966,14 +717,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     @objc func saveDocument(_ sender: Any?) {
-        guard !saveAnnotations(), let window else { return }
+        guard !saveChanges(), let window else { return }
         Self.saveFailedAlert(for: url, "Check that the file can be written, then save again.").beginSheetModal(for: window)
     }
 
     static func saveFailedAlert(for url: URL, _ advice: String) -> NSAlert {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "The highlights and notes couldn’t be saved in “\(url.lastPathComponent)”."
+        alert.messageText = "The changes to “\(url.lastPathComponent)” couldn’t be saved."
         alert.informativeText = advice
         return alert
     }
@@ -981,15 +732,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// Back after its window closed, because the marks couldn't be written
     /// then (see AppDelegate.reopen).
     func showMarksNotSaved() {
-        annotationsChanged()
+        documentChanged()
         guard let window else { return }
         Self.saveFailedAlert(for: url, "They’re still here. Check that the file can be written, then save again.").beginSheetModal(for: window)
     }
 
     /// The tab went to the background and its document is off screen: the
     /// write (seconds, for a long manual) runs on another thread.
-    private func saveAnnotationsInBackground() {
-        guard saveInFlight == nil, hasUnsavedAnnotations, let document = parked?.document else { return }
+    private func saveChangesInBackground() {
+        guard saveInFlight == nil, hasUnsavedChanges, let document = parked?.document else { return }
         let save = SaveInFlight(version: changeCount, document: document)
         saveInFlight = save
         watcher?.expectOwnChange()
@@ -1017,7 +768,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         let save: SaveInFlight
         if let running = saveInFlight {
             save = running
-        } else if hasUnsavedAnnotations, let document = pdf {
+        } else if hasUnsavedChanges, let document = pdf {
             pdfView.document = nil  // nothing touches it while another thread writes it
             save = SaveInFlight(version: changeCount, document: document)
             start(save) {}
@@ -1052,10 +803,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             return
         }
         savedChangeCount = save.version
-        window?.isDocumentEdited = hasUnsavedAnnotations
+        window?.isDocumentEdited = hasUnsavedChanges
         // Marks made since the write began stay in the document shown; the
         // next save writes them.
-        if !hasUnsavedAnnotations { replace(with: fresh) }
+        if !hasUnsavedChanges { replace(with: fresh) }
         scheduleParking()  // a tab that came back during the write shows now
     }
 
@@ -1086,28 +837,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     private func replace(with fresh: PDFDocument) {
         pdfView.select(nil)
         if parked != nil {
-            if let old = parked?.destination, let page = old.page, let document = page.document,
-               let samePage = fresh.page(at: document.index(for: page)) {
-                parked?.destination = PDFDestination(page: samePage, at: old.point)
-            } else {
-                parked?.destination = nil
-            }
             parked?.document = fresh
             parked?.reloaded = true
             return
         }
-        let index = pageIndex
-        let point = pdfView.currentDestination?.point
-        let autoScales = pdfView.autoScales
-        let scale = pdfView.scaleFactor
-        show(fresh)
-        if autoScales { pdfView.autoScales = true } else { pdfView.scaleFactor = scale }
-        pdfView.layoutDocumentView()
-        if let page = fresh.page(at: min(index, max(fresh.pageCount - 1, 0))) {
-            if let point { pdfView.go(to: PDFDestination(page: page, at: point)) } else { pdfView.go(to: page) }
-        }
+        show(fresh, at: spot)
         findBar?.refresh()
-        updatePageNumber()
     }
 
     // MARK: File
@@ -1180,41 +915,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             // In the find field these keys select text.
             return !(window?.firstResponder is NSText) && canAnnotate
         case #selector(printDocument(_:)): return unlocked && pdf?.allowsPrinting == true
-        case #selector(saveDocument(_:)): return hasUnsavedAnnotations
+        case #selector(saveDocument(_:)): return hasUnsavedChanges
         case #selector(showInFinder(_:)), #selector(openInPreview(_:)): return true
         default: return unlocked
         }
-    }
-}
-
-/// The window's content: a target for dropped PDFs.
-final class DropView: NSView {
-    var onDrop: (([URL]) -> Void)?
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        registerForDraggedTypes([.fileURL])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    private func documents(in info: NSDraggingInfo) -> [URL] {
-        let options: [NSPasteboard.ReadingOptionKey: Any] = [
-            .urlReadingFileURLsOnly: true,
-            .urlReadingContentsConformToTypes: ["com.adobe.pdf"],
-        ]
-        return info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL] ?? []
-    }
-
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        documents(in: sender).isEmpty ? [] : .generic
-    }
-
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        let urls = documents(in: sender)
-        guard !urls.isEmpty else { return false }
-        onDrop?(urls)
-        return true
     }
 }

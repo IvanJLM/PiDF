@@ -39,7 +39,7 @@ final class RotatePrintTests: XCTestCase {
         XCTAssertEqual(rotation(controller, 0), 0)
         XCTAssertEqual(rotation(controller, 2), 0)
         XCTAssertEqual(controller.pageIndex, 1, "the rotated page stays on screen")
-        XCTAssertTrue(controller.hasUnsavedAnnotations)
+        XCTAssertTrue(controller.hasUnsavedChanges)
         controller.rotatePageLeft(nil)
         controller.rotatePageLeft(nil)
         XCTAssertEqual(rotation(controller, 1), 270)
@@ -81,7 +81,7 @@ final class RotatePrintTests: XCTestCase {
         let (controller, url) = try open(pages: 3)
         controller.go(toIndex: 1)
         controller.rotatePageRight(nil)
-        XCTAssertTrue(controller.saveAnnotations())
+        XCTAssertTrue(controller.saveChanges())
         XCTAssertEqual(PDFDocument(url: url)?.page(at: 1)?.rotation, 90)
         XCTAssertEqual(PDFDocument(url: url)?.page(at: 0)?.rotation, 0)
         XCTAssertEqual(controller.pageIndex, 1, "still there after the file is read again")
@@ -91,14 +91,14 @@ final class RotatePrintTests: XCTestCase {
         controller.window?.undoManager?.redo()
         XCTAssertEqual(rotation(controller, 1), 90)
         controller.window?.undoManager?.undo()
-        XCTAssertTrue(controller.saveAnnotations())
+        XCTAssertTrue(controller.saveChanges())
         XCTAssertEqual(PDFDocument(url: url)?.page(at: 1)?.rotation, 0)
     }
 
     func testEverySaveWritesTheRotationOnScreen() throws {
         let (controller, url) = try open(pages: 3)
         func saved() throws -> Int? {
-            XCTAssertTrue(controller.saveAnnotations())
+            XCTAssertTrue(controller.saveChanges())
             return PDFDocument(url: url)?.page(at: 0)?.rotation
         }
         for expected in [90, 180, 270, 0] {
@@ -139,7 +139,7 @@ final class RotatePrintTests: XCTestCase {
         XCTAssertFalse(readOnly.validateMenuItem(item(#selector(Doc.rotatePageRight(_:)))))
         readOnly.rotatePageRight(nil)
         XCTAssertEqual(rotation(readOnly, 0), 0)
-        XCTAssertFalse(readOnly.hasUnsavedAnnotations)
+        XCTAssertFalse(readOnly.hasUnsavedChanges)
     }
 
     func testUsingAnotherAppsVersionForgetsTheRotations() async throws {
@@ -203,7 +203,7 @@ final class RotatePrintTests: XCTestCase {
         controller.rotatePageRight(nil)
         let page = try XCTUnwrap(controller.pdf?.page(at: 0))
         controller.add(note: "A note wider than it is high", at: NSPoint(x: 100, y: 300), on: page, font: NSFont(name: "Helvetica", size: 12))
-        XCTAssertTrue(controller.saveAnnotations())
+        XCTAssertTrue(controller.saveChanges())
         let saved = try yellowBox(on: try XCTUnwrap(PDFDocument(url: url)?.page(at: 0)))
         XCTAssertGreaterThan(saved.width, 3 * saved.height)
     }
