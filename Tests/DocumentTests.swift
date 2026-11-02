@@ -289,7 +289,7 @@ final class BackgroundTabTests: XCTestCase {
         let first = app.open([url], nextTo: nil)[0]
         first.showFind(nil)
         first.findBar?.search("needle")
-        await waitUntil { first.findBar?.matches.count == 2 && first.pdf?.isFinding == false }
+        await waitUntil { first.findBar?.matches.count == 2 && first.findBar?.isSearching == false }
         app.open([try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 2)], nextTo: nil)
         await waitUntil { first.isParked }
         var reloaded = false
@@ -297,7 +297,7 @@ final class BackgroundTabTests: XCTestCase {
         try Fixtures.pdf(at: url, pages: ["nothing", "needle here only"])
         await waitUntil { reloaded }
         first.bringToFront()
-        await waitUntil { !first.isParked && first.findBar?.matches.count == 1 && first.pdf?.isFinding == false }
+        await waitUntil { !first.isParked && first.findBar?.matches.count == 1 && first.findBar?.isSearching == false }
         XCTAssertEqual(first.findBar?.matches.count, 1, "searched again in the new version")
         let highlighted = first.pdfView.highlightedSelections ?? []
         XCTAssertFalse(highlighted.isEmpty)
@@ -310,13 +310,13 @@ final class BackgroundTabTests: XCTestCase {
         let first = app.open([url], nextTo: nil)[0]
         first.showFind(nil)
         first.findBar?.search("needle")
-        await waitUntil { first.findBar?.matches.count == 2 && first.pdf?.isFinding == false }
+        await waitUntil { first.findBar?.matches.count == 2 && first.findBar?.isSearching == false }
         first.add(note: "behind", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(first.pdf?.page(at: 0)))
         app.open([try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 2)], nextTo: nil)
         await waitUntil { first.isParked && !first.hasUnsavedAnnotations }
         first.bringToFront()
         await waitUntil {
-            !first.isParked && first.pdf?.isFinding == false && first.findBar?.matches.first?.pages.first?.document === first.pdf
+            !first.isParked && first.findBar?.isSearching == false && first.findBar?.matches.count == 2 && first.pdfView.highlightedSelections?.isEmpty == false
         }
         let bar = try XCTUnwrap(first.findBar)
         XCTAssertEqual(bar.matches.count, 2)
