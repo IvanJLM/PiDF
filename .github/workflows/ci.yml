@@ -25,6 +25,7 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.6.app
           xcodebuild -version
       - name: Unit tests (Debug)
+        timeout-minutes: 8
         run: ./scripts/test.sh
       - name: Release build, no warnings
         run: |

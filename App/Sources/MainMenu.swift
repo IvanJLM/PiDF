@@ -38,8 +38,8 @@ enum MainMenu {
         edit.addItem(item("Highlight", #selector(Doc.toggleHighlight(_:)), "h", .control))
         edit.addItem(item("Add Note…", #selector(Doc.addNote(_:)), "n", .control))
         edit.addItem(item("Delete Page", #selector(Doc.deletePage(_:)), "d", .control))
-        edit.addItem(item("Rotate Page Left", #selector(Doc.rotatePageLeft(_:)), arrow(NSLeftArrowFunctionKey), [.control, .shift]))
-        edit.addItem(item("Rotate Page Right", #selector(Doc.rotatePageRight(_:)), arrow(NSRightArrowFunctionKey), [.control, .shift]))
+        edit.addItem(item("Rotate Page Left", #selector(Doc.rotatePageLeft(_:)), arrow(NSLeftArrowFunctionKey), [.control, .option]))
+        edit.addItem(item("Rotate Page Right", #selector(Doc.rotatePageRight(_:)), arrow(NSRightArrowFunctionKey), [.control, .option]))
         edit.addItem(.separator())
         let find = NSMenu(title: "Find")
         find.addItem(item("Find…", #selector(Doc.showFind(_:)), "f"))
@@ -56,6 +56,8 @@ enum MainMenu {
         view.addItem(item("Zoom Out", #selector(Doc.zoomOut(_:)), "-"))
         view.addItem(.separator())
         view.addItem(item("Two Pages", #selector(Doc.toggleTwoPages(_:)), "2", [.command, .option]))
+        // Its keys are ⌃⌥ alone, which a menu can't show (see DocumentWindow).
+        view.addItem(item("Page Selector", #selector(Doc.togglePageSelector(_:))))
         view.addItem(.separator())
         view.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
 

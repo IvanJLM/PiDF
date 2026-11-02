@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.8.0 — 2026-11-01
+
+- ⌃⌥ alone, pressed and let go, shows all the pages in a grid, starting at
+  the one on screen; also in View > Page Selector. A click selects a page, a
+  double click or Return goes to it, and ⌃⌥ again or Esc goes back to exactly
+  where you were. The arrows move the selection. It draws only the pages in
+  view, keeps a few for scrolling back, and lets them go when it closes.
+- Rotating a page moves to ⌃⌥← and ⌃⌥→, from ⌃⇧← and ⌃⇧→. ⌃← and ⌃→ still
+  work if you free them from macOS.
+
 ## 1.7.0 — 2026-11-01
 
 - ⌃⇧← and ⌃⇧→ turn the page on screen a quarter turn, in Edit > Rotate Page

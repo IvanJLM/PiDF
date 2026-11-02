@@ -76,6 +76,12 @@ final class TourTests: XCTestCase {
         await shoot(window, "12-print", into: folder)
         if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .cancel) }
         await wait(0.3)
+        first.add(note: "Not saved yet, on the turned page", at: NSPoint(x: 400, y: 200), on: page)
+        first.pdfView.select(nil)
+        first.go(toIndex: 3)
+        first.togglePageSelector(nil)
+        await shoot(window, "13-page-selector", into: folder)
+        first.closePageSelector()
         let locked = try Fixtures.pdf(at: tmp.appendingPathComponent("Locked.pdf"), pages: ["Secret"], password: "fixture-pw")
         let lockedController = app.open([locked], nextTo: nil)[0]
         await shoot(try XCTUnwrap(lockedController.window), "7-password", into: folder)
