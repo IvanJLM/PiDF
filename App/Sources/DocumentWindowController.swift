@@ -289,6 +289,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     func park() {
         guard parked == nil, let document = pdfView.document, window?.attachedSheet == nil else { return }
         closePageSelector()
+        findBar?.interrupt()
         parked = Parked(document: document, destination: pdfView.currentDestination, pageIndex: pageIndex,
                         scale: pdfView.scaleFactor, autoScales: pdfView.autoScales)
         rememberPosition()  // kept even if the app never gets to quit normally
@@ -672,6 +673,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         if findBar == nil, let content = window?.contentView {
             let bar = FindBar(pdfView: pdfView)
             bar.onClose = { [weak self] in self?.closeFind(nil) }
+            bar.fileOpener = { [weak self] in self?.fileOpenerForFind }
             let top = content.bounds.height - max(chrome.barHeight, 28) - 10
             bar.frame = NSRect(x: content.bounds.width - FindBar.width - 12, y: top - FindBar.height,
                                width: FindBar.width, height: FindBar.height)
@@ -687,6 +689,19 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         }
         window?.makeFirstResponder(findBar?.field)
         findBar?.field.selectText(nil)
+    }
+
+    /// Reads the file for find on other threads, so the document shown never
+    /// holds the text of all its pages. Not when the document shown has what
+    /// the file hasn't: changes not saved yet, or text recognized in a scan.
+    private var fileOpenerForFind: (@Sendable () -> PDFDocument?)? {
+        guard !hasUnsavedAnnotations, !recognizesText else { return nil }
+        let url = self.url, password = self.password
+        return {
+            guard let copy = PDFDocument(url: url) else { return nil }
+            if copy.isLocked, let password { _ = copy.unlock(withPassword: password) }
+            return copy
+        }
     }
 
     @objc func findNext(_ sender: Any?) {
