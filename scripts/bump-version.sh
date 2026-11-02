@@ -30,3 +30,4 @@ awk -v entry="$entry" '!done && /^## / { printf entry; done = 1 } { print }' CHA
 mv CHANGELOG.md.tmp CHANGELOG.md
 
 echo "PiDF $current ($build) -> $next ($nextBuild). Describe the changes in CHANGELOG.md."
+echo "Once it is merged into main, tag it: git tag v$next origin/main && git push origin v$next"
