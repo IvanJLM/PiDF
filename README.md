@@ -69,10 +69,14 @@ are not reading.
   the document and show in Preview or any other viewer.
 - **Delete a page** (⌃D): the page on screen goes, with the marks' next
   save; ⌘Z puts it back while the window is open.
-- **Rotate a page** (⌃⇧← / ⌃⇧→): the page on screen turns a quarter turn,
+- **Rotate a page** (⌃⌥← / ⌃⌥→): the page on screen turns a quarter turn,
   saved like the marks; ⌘Z turns it back. ⌃← and ⌃→ work too if you free
   them from macOS, which keeps them for changing Spaces (System Settings ›
   Keyboard › Keyboard Shortcuts › Mission Control).
+- **Page selector** (⌃⌥ alone, or View › Page Selector): all the pages in a
+  grid, starting at the one on screen. A double click or Return goes to a
+  page; ⌃⌥ again or Esc goes back to where you were. It draws only the pages
+  in view and costs nothing until it opens.
 - **Print** (⌘P), with macOS's own sheet.
 - **Show in Finder** (⇧⌘R), **Open in Preview** (⇧⌘P) to sign or fill forms,
   and **full screen** (⌃⌘F).
@@ -91,7 +95,7 @@ For those, Open in Preview hands the document over.
 | ⌃N | Add a note where the pointer is (note selected: edit it) |
 | Delete | Remove the selected note |
 | ⌃D | Delete the page on screen |
-| ⌃⇧← / ⌃⇧→ | Rotate the page on screen (also ⌃← / ⌃→ if freed from macOS) |
+| ⌃⌥← / ⌃⌥→ | Rotate the page on screen (also ⌃← / ⌃→ if freed from macOS) |
 | ⌘Z / ⇧⌘Z | Undo / redo deleting or rotating a page |
 | ⌘S | Save the highlights and notes now |
 | ⌘P | Print |
@@ -102,6 +106,7 @@ For those, Open in Preview hands the document over.
 | ↑ / ↓ | Scroll a little |
 | ⌥⌘↑ / ⌥⌘↓ | First / last page |
 | ⌥⌘G | Go to page |
+| ⌃⌥ (press and let go) | All the pages in a grid; again or Esc to go back |
 | ⌘[ / ⌘] | Back / forward after a link |
 | ⌃⌘F | Full screen (Esc to leave) |
 | ⇧⌘R / ⇧⌘P | Show in Finder / open in Preview |

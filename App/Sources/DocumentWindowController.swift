@@ -5,13 +5,15 @@ import PDFKit
 final class DocumentWindow: NSWindow {
     /// ← and → turn a whole page; ↑ and ↓ still scroll a little. ⌃← and ⌃→
     /// rotate the page, where macOS lets them through (out of the box they
-    /// change Spaces; ⌃⇧← and ⌃⇧→ in the menu always work). Caught here,
+    /// change Spaces; ⌃⌥← and ⌃⌥→ in the menu always work). Caught here,
     /// before PDFKit's own views see the key, so it works wherever the click
     /// left the focus, except while typing in a text field.
     override func sendEvent(_ event: NSEvent) {
+        followSelectorKeys(event)
         // A click on a note, and the drag that may follow, are the note's
         // (select, move, edit), not PDFKit's.
         if let controller = windowController as? DocumentWindowController {
+            if event.type == .keyDown, controller.handlePageSelectorKey(event) { return }
             switch event.type {
             case .leftMouseDown where controller.pdfView.handleClick(event): return
             case .leftMouseDragged where controller.pdfView.handleDrag(event): return
@@ -20,7 +22,7 @@ final class DocumentWindow: NSWindow {
             }
         }
         if event.type == .keyDown, !(firstResponder is NSText),
-           let controller = windowController as? DocumentWindowController,
+           let controller = windowController as? DocumentWindowController, controller.pageSelector == nil,
            let key = event.charactersIgnoringModifiers?.unicodeScalars.first.map({ Int($0.value) }) {
             let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
             switch (key, modifiers) {
@@ -43,6 +45,37 @@ final class DocumentWindow: NSWindow {
             }
         }
         super.sendEvent(event)
+    }
+
+    /// ⌃ and ⌥ held together, then let go with nothing else in between.
+    private var selectorKeysHeld = false
+
+    /// The keys held were part of a shortcut the menu took: ⌃⌥← and ⌃⌥→ may
+    /// never reach this window as key events.
+    func forgetSelectorKeys() { selectorKeysHeld = false }
+
+    /// ⌃⌥ alone opens and closes the page selector, when the keys go up: on
+    /// the way down they may be the start of another shortcut. Only the events
+    /// the window gets anyway: nothing runs while no key is pressed.
+    private func followSelectorKeys(_ event: NSEvent) {
+        switch event.type {
+        case .flagsChanged:
+            let held = event.modifierFlags.intersection([.command, .option, .control, .shift])
+            if held == [.control, .option] {
+                selectorKeysHeld = true
+            } else if held.isEmpty, selectorKeysHeld {
+                selectorKeysHeld = false
+                if !(firstResponder is NSText), attachedSheet == nil {
+                    (windowController as? DocumentWindowController)?.togglePageSelector(nil)
+                }
+            } else if !held.isSubset(of: [.control, .option]) {
+                selectorKeysHeld = false
+            }
+        case .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel:
+            selectorKeysHeld = false
+        default:
+            break
+        }
     }
 }
 
@@ -158,6 +191,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             pdfView.setValue(Self.needsTextRecognition(document), forKey: "documentAnalysisEnabled")
         }
         pdfView.document = document
+        guard let document, !document.isLocked else { return closePageSelector() }
+        pageSelector?.reload(document)
     }
 
     // MARK: Showing
@@ -250,6 +285,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     func park() {
         guard parked == nil, let document = pdfView.document, window?.attachedSheet == nil else { return }
+        closePageSelector()
         parked = Parked(document: document, destination: pdfView.currentDestination, pageIndex: pageIndex,
                         scale: pdfView.scaleFactor, autoScales: pdfView.autoScales)
         rememberPosition()  // kept even if the app never gets to quit normally
@@ -423,6 +459,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     func windowWillClose(_ notification: Notification) {
         rememberFrame()
         isClosed = true
+        closePageSelector()
         waitForBackgroundSave()
         rememberPosition()
         chrome.stop()
@@ -518,6 +555,69 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
                 self?.go(toIndex: number - 1)
             }
         }
+    }
+
+    // MARK: Page selector
+
+    /// The grid of all the pages, while it is on screen.
+    private(set) var pageSelector: PageSelector?
+
+    /// ⌃⌥: the grid opens at the page on screen; ⌃⌥ again or Esc goes back
+    /// to exactly where the document was, a double click or Return to the
+    /// page chosen. The document stays as it is underneath.
+    @objc func togglePageSelector(_ sender: Any?) {
+        if pageSelector != nil { return closePageSelector() }
+        guard parked == nil, let document = pdfView.document, !document.isLocked, let content = window?.contentView else { return }
+        let current = pageIndex
+        let selector = PageSelector(frame: content.bounds, document: selectorDocument() ?? document,
+                                    topInset: max(chrome.barHeight, 28) + 8, background: pdfView.backgroundColor)
+        selector.onChoose = { [weak self] index in self?.choosePage(index) }
+        content.addSubview(selector, positioned: .above, relativeTo: pdfView)
+        selector.select(current, scrollingToIt: true)
+        pageSelector = selector
+        pdfView.select(nil)
+        pdfView.isHidden = true
+        findBar?.isHidden = true
+        window?.makeFirstResponder(selector.grid)
+    }
+
+    /// PDFKit keeps what it decodes to draw a page for as long as the document
+    /// lives, so the grid reads the file through a copy of its own that goes
+    /// with it. Changes not saved yet are only in the document shown: nil.
+    private func selectorDocument() -> PDFDocument? {
+        guard !hasUnsavedAnnotations, let copy = PDFDocument(url: url) else { return nil }
+        if copy.isLocked, let password { _ = copy.unlock(withPassword: password) }
+        return copy.isLocked || copy.pageCount != pdf?.pageCount ? nil : copy
+    }
+
+    func closePageSelector() {
+        guard let selector = pageSelector else { return }
+        pageSelector = nil
+        selector.removeFromSuperview()
+        pdfView.isHidden = false
+        findBar?.isHidden = false
+        window?.makeFirstResponder(pdfView)
+        Self.returnFreedMemory()  // the thumbnails
+    }
+
+    func choosePage(_ index: Int) {
+        closePageSelector()
+        go(toIndex: index)
+    }
+
+    /// With the grid open, Esc leaves it and Return goes to the page selected;
+    /// any other key is the grid's. False when the key isn't for the selector.
+    func handlePageSelectorKey(_ event: NSEvent) -> Bool {
+        guard let selector = pageSelector else { return false }
+        switch event.keyCode {
+        case 53:  // Esc
+            closePageSelector()
+        case 36, 76:  // Return, Enter
+            if let index = selector.selectedIndex { choosePage(index) }
+        default:
+            return false
+        }
+        return true
     }
 
     // MARK: Find
@@ -702,17 +802,19 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         annotationsChanged()
         go(toIndex: index)
         findBar?.refresh()
+        if let document = pdf { pageSelector?.reload(document) }
     }
 
     // MARK: Rotating pages
 
-    /// ⌃⇧← / ⌃⇧→ (and ⌃← / ⌃→, see DocumentWindow): turns the page on screen
+    /// ⌃⌥← / ⌃⌥→ (and ⌃← / ⌃→, see DocumentWindow): turns the page on screen
     /// a quarter turn. Saved in the file as the marks are; ⌘Z turns it back.
     @objc func rotatePageLeft(_ sender: Any?) { rotateCurrentPage(by: -90) }
     @objc func rotatePageRight(_ sender: Any?) { rotateCurrentPage(by: 90) }
 
     private func rotateCurrentPage(by degrees: Int) {
-        guard canAnnotate else { return }
+        (window as? DocumentWindow)?.forgetSelectorKeys()
+        guard canAnnotate, pageSelector == nil else { return }
         rotatePage(at: pageIndex, by: degrees)
     }
 
@@ -729,6 +831,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         pdfView.layoutDocumentView()
         if pdfView.autoScales { pdfView.autoScales = true }
         go(toIndex: index)
+        if let document = pdf { pageSelector?.reload(document) }
         Self.returnFreedMemory()  // the pages drawn at the old size
     }
 
@@ -925,7 +1028,20 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         let unlocked = pdf?.isLocked == false
+        // With the grid open no page is "on screen": what acts on one waits.
+        if pageSelector != nil {
+            switch menuItem.action {
+            case #selector(togglePageSelector(_:)), #selector(saveDocument(_:)), #selector(printDocument(_:)),
+                 #selector(showInFinder(_:)), #selector(openInPreview(_:)):
+                break
+            default:
+                return false
+            }
+        }
         switch menuItem.action {
+        case #selector(togglePageSelector(_:)):
+            menuItem.state = pageSelector == nil ? .off : .on
+            return unlocked
         case #selector(zoomIn(_:)): return unlocked && pdfView.canZoomIn
         case #selector(zoomOut(_:)): return unlocked && pdfView.canZoomOut
         case #selector(zoomToFit(_:)):

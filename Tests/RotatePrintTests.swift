@@ -3,7 +3,7 @@ import PDFKit
 import XCTest
 @testable import PiDF
 
-/// ⌃⇧← / ⌃⇧→ (and ⌃← / ⌃→) rotate the page on screen; ⌘P prints.
+/// ⌃⌥← / ⌃⌥→ (and ⌃← / ⌃→) rotate the page on screen; ⌘P prints.
 @MainActor
 final class RotatePrintTests: XCTestCase {
     private var app: AppDelegate { NSApp.delegate as! AppDelegate }
@@ -65,7 +65,7 @@ final class RotatePrintTests: XCTestCase {
         XCTAssertEqual(controller.pageIndex, 0, "not a page turn")
     }
 
-    func testTheMenuKeysAreControlShiftArrows() throws {
+    func testTheMenuKeysAreControlOptionArrows() throws {
         let edit = try XCTUnwrap(NSApp.mainMenu?.item(withTitle: "Edit")?.submenu)
         let left = try XCTUnwrap(edit.item(withTitle: "Rotate Page Left"))
         let right = try XCTUnwrap(edit.item(withTitle: "Rotate Page Right"))
@@ -73,8 +73,8 @@ final class RotatePrintTests: XCTestCase {
         XCTAssertEqual(right.action, #selector(Doc.rotatePageRight(_:)))
         XCTAssertEqual(left.keyEquivalent, String(Character(UnicodeScalar(UInt16(NSLeftArrowFunctionKey))!)))
         XCTAssertEqual(right.keyEquivalent, String(Character(UnicodeScalar(UInt16(NSRightArrowFunctionKey))!)))
-        XCTAssertEqual(left.keyEquivalentModifierMask, [.control, .shift])
-        XCTAssertEqual(right.keyEquivalentModifierMask, [.control, .shift])
+        XCTAssertEqual(left.keyEquivalentModifierMask, [.control, .option])
+        XCTAssertEqual(right.keyEquivalentModifierMask, [.control, .option])
     }
 
     func testRotationReachesTheFileAndUndoWorksAfterASave() throws {
