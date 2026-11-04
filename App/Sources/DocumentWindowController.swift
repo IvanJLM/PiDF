@@ -246,7 +246,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     /// Where the document is on screen: the page the title bar shows, the
     /// exact point when it lies on that page, and the zoom.
-    private struct Spot {
+    fileprivate struct Spot {
         var pageIndex: Int
         var point: NSPoint?
         var scale: CGFloat
@@ -268,7 +268,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// a save or another app's change, unlocked).
     private func show(_ document: PDFDocument, at spot: Spot) {
         show(document)
-        if !document.isLocked {
+        move(to: spot)
+    }
+
+    /// Takes the document on screen to `spot`, or as near as its pages allow.
+    private func move(to spot: Spot) {
+        if let document = pdfView.document, !document.isLocked {
             if spot.autoScales { pdfView.autoScales = true } else { pdfView.scaleFactor = spot.scale }
             pdfView.layoutDocumentView()
             let index = min(spot.pageIndex, max(document.pageCount - 1, 0))
@@ -288,14 +293,21 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         window?.subtitle = document.pageCount > 1 ? "Page \(pageIndex + 1) of \(document.pageCount)" : ""
     }
 
+    /// Back where the document was left: the page, the spot on it, the zoom.
     private func restorePosition() {
-        guard let saved = ReadingPositions.page(for: url) else { return }
-        go(toIndex: saved)
+        guard let saved = ReadingPositions.position(for: url) else { return }
+        if parked != nil { parked?.spot = Spot(saved) } else { move(to: Spot(saved)) }
     }
 
     func rememberPosition() {
-        guard pdf?.isLocked == false else { return }
-        ReadingPositions.save(pageIndex, for: url)
+        guard let document = pdf, !document.isLocked else { return }
+        let spot = self.spot
+        var point = spot.point
+        // At the top of the page (or in the margin above it), the page says it all.
+        if let y = point?.y, let page = document.page(at: spot.pageIndex), y >= page.bounds(for: pdfView.displayBox).maxY {
+            point = nil
+        }
+        ReadingPositions.save(.init(page: spot.pageIndex, point: point, scale: spot.autoScales ? nil : spot.scale), for: url)
     }
 
     func go(toIndex index: Int) {
@@ -409,8 +421,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         // PDFView lays out a locked document as empty: show it again, at the
         // page it was left at, if any.
         pdfView.document = nil
-        if let saved = ReadingPositions.page(for: url) {
-            show(document, at: Spot(pageIndex: saved, point: nil, scale: 1, autoScales: true))
+        if let saved = ReadingPositions.position(for: url) {
+            show(document, at: Spot(saved))
         } else {
             show(document)
             pdfView.autoScales = true
@@ -919,5 +931,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         case #selector(showInFinder(_:)), #selector(openInPreview(_:)): return true
         default: return unlocked
         }
+    }
+}
+
+extension DocumentWindowController.Spot {
+    init(_ position: ReadingPositions.Position) {
+        self.init(pageIndex: position.page, point: position.point, scale: position.scale ?? 1, autoScales: position.scale == nil)
     }
 }

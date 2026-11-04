@@ -138,6 +138,39 @@ final class DocumentTests: XCTestCase {
         XCTAssertEqual(again.pageIndex, 13)
     }
 
+    func testReopensAtTheSameZoomAndSpot() async throws {
+        let folder = try Fixtures.folder(self)
+        let url = try Fixtures.pdf(in: folder, pageCount: 20)
+        let first = app.open([url], nextTo: nil)[0]
+        await wait(0.2)
+        first.pdfView.scaleFactor = 2.5
+        let page = try XCTUnwrap(first.pdf?.page(at: 8))
+        first.pdfView.go(to: PDFDestination(page: page, at: NSPoint(x: 100, y: page.bounds(for: .cropBox).maxY - 60)))
+        await wait(0.2)
+        let left = try XCTUnwrap(first.pdfView.currentDestination?.point)
+        first.close()
+        await wait(0.1)
+        let saved = try XCTUnwrap(ReadingPositions.position(for: url))
+        XCTAssertEqual(saved.page, 8)
+        XCTAssertEqual(try XCTUnwrap(saved.scale), 2.5, accuracy: 0.01)
+
+        let again = app.open([url], nextTo: nil)[0]
+        await wait(0.2)
+        XCTAssertEqual(again.pageIndex, 8)
+        XCTAssertFalse(again.pdfView.autoScales)
+        XCTAssertEqual(again.pdfView.scaleFactor, 2.5, accuracy: 0.01, "the same zoom")
+        let back = try XCTUnwrap(again.pdfView.currentDestination?.point)
+        XCTAssertEqual(back.y, left.y, accuracy: 2, "the same spot on the page")
+        XCTAssertEqual(back.x, left.x, accuracy: 2)
+
+        // Fitted again: the next time it opens fitted, at the top of the page.
+        again.zoomToFit(nil)
+        again.go(toIndex: 4)
+        again.close()
+        await wait(0.1)
+        XCTAssertEqual(ReadingPositions.position(for: url), .init(page: 4))
+    }
+
     func testReadingPositionsAreBounded() {
         for index in 0..<(ReadingPositions.limit + 30) {
             ReadingPositions.save(3, for: URL(fileURLWithPath: "/tmp/\(index).pdf"))
