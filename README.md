@@ -58,8 +58,8 @@ are not reading.
   search field) walk through them. Selected text is what you look for.
 - **Select and copy text** (⌘C), follow links, and go back after a link with
   ⌘[.
-- **Remembers where you were**: each document reopens at the page you left
-  (for the last 200 documents). The page number shows in the title bar.
+- **Remembers where you were**: each document reopens at the page, the spot
+  and the zoom you left it at (for the last 200 documents). The page number shows in the title bar.
 - **Follows the file**: when another app saves a new version, PiDF shows it
   at the same page. With marks not saved yet, it asks first: keep them, or use
   the new file.

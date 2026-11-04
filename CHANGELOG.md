@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.0 — 2026-11-04
+
+- A document reopens as you left it: at the same page, the same spot on it
+  and the same zoom. Until now it came back at the top of the page, fitted to
+  the window. If you left it fitted, it opens fitted to the new window.
+
 ## 1.9.0 — 2026-11-02
 
 - When another app or the sync saves a new version of the file while there
