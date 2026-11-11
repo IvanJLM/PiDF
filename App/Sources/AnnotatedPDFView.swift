@@ -15,6 +15,7 @@ final class AnnotatedPDFView: PDFView {
     private var layoutObservers: [NSObjectProtocol] = []
 
     override init(frame: NSRect) {
+        SharpNotes.install()
         super.init(frame: frame)
         outline.wantsLayer = true
         outline.layer?.borderWidth = 1.5
@@ -22,7 +23,10 @@ final class AnnotatedPDFView: PDFView {
         outline.isHidden = true
         for name in [NSNotification.Name.PDFViewScaleChanged, .PDFViewDisplayModeChanged, .PDFViewDocumentChanged] {
             layoutObservers.append(NotificationCenter.default.addObserver(forName: name, object: self, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.placeOutline() }
+                MainActor.assumeIsolated {
+                    self?.placeOutline()
+                    if let self, name == .PDFViewScaleChanged { SharpNotes.refresh(in: self) }
+                }
             })
         }
     }
@@ -37,6 +41,12 @@ final class AnnotatedPDFView: PDFView {
     func select(_ note: PDFAnnotation?) {
         selectedNote = note
         placeOutline()
+    }
+
+    /// Moved to a screen with other pixels per point.
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        SharpNotes.refresh(in: self)
     }
 
     override func layout() {

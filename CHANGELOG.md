@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.1 — 2026-11-11
+
+- Notes are sharp again on macOS 27. Its PDFKit draws every note at one
+  pixel per point whatever the zoom and the screen, so on a Retina screen
+  the text came out blurred, worse the more you zoomed in. PiDF now draws
+  them at the resolution they are shown at, as macOS 26 did. Notes made in
+  other apps are sharp in PiDF too. The files were never affected.
+
 ## 1.10.0 — 2026-11-04
 
 - A document reopens as you left it: at the same page, the same spot on it
