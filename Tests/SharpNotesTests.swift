@@ -39,8 +39,16 @@ final class SharpNotesTests: XCTestCase {
 
     private func assertSharp(_ controller: DocumentWindowController, _ moment: String, file: StaticString = #filePath, line: UInt = #line) async throws {
         let view = controller.pdfView
+        // The note on screen, whatever the size of the test machine's screen.
+        let page = try XCTUnwrap(controller.pdf?.page(at: 0), file: file, line: line)
+        let note = try XCTUnwrap(page.annotations.first(where: Marks.isNote), "no note \(moment)", file: file, line: line)
+        view.go(to: note.bounds, on: page)
         let wanted = view.scaleFactor * (controller.window?.backingScaleFactor ?? 1)
-        await waitUntil(3) { ((try? self.noteScales(in: view)) ?? []).allSatisfy { abs($0 - wanted) < 0.01 } }
+        // A document read again builds its note layers a little later.
+        await waitUntil(5) {
+            let scales = (try? self.noteScales(in: view)) ?? []
+            return !scales.isEmpty && scales.allSatisfy { abs($0 - wanted) < 0.01 }
+        }
         let scales = try noteScales(in: view)
         XCTAssertFalse(scales.isEmpty, "no note layer \(moment)", file: file, line: line)
         for scale in scales { XCTAssertEqual(scale, wanted, accuracy: 0.01, moment, file: file, line: line) }
