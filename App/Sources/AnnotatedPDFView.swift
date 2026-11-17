@@ -10,6 +10,9 @@ final class AnnotatedPDFView: PDFView {
     private(set) var selectedNote: PDFAnnotation?
     var onNoteMoved: (() -> Void)?
     var onNoteDoubleClicked: ((PDFAnnotation) -> Void)?
+    /// PDFKit follows every link clicked through perform(_:): the window
+    /// sees it go, to leave the way back.
+    var onLink: ((PDFAction) -> Void)?
     /// The outline around the selected note, scrolling with the pages.
     private let outline = NSView()
     private var layoutObservers: [NSObjectProtocol] = []
@@ -37,6 +40,13 @@ final class AnnotatedPDFView: PDFView {
     deinit {
         for observer in layoutObservers { NotificationCenter.default.removeObserver(observer) }
     }
+
+    override func perform(_ action: PDFAction) {
+        if let onLink { onLink(action) } else { super.perform(action) }
+    }
+
+    /// What PDFKit does with a link: goes where it leads, or opens it.
+    func follow(_ action: PDFAction) { super.perform(action) }
 
     func select(_ note: PDFAnnotation?) {
         selectedNote = note

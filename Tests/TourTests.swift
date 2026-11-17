@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 import XCTest
 @testable import PiDF
 
@@ -82,6 +83,12 @@ final class TourTests: XCTestCase {
         first.togglePageSelector(nil)
         await shoot(window, "13-page-selector", into: folder)
         first.closePageSelector()
+        // A link from page 4 to page 7, as PDFKit follows it.
+        if let target = first.pdf?.page(at: 6) {
+            first.pdfView.perform(PDFActionGoTo(destination: PDFDestination(page: target, at: NSPoint(x: 0, y: 842))))
+        }
+        await shoot(window, "14-back-after-link", into: folder)
+        first.forgetLinks()
         let locked = try Fixtures.pdf(at: tmp.appendingPathComponent("Locked.pdf"), pages: ["Secret"], password: "fixture-pw")
         let lockedController = app.open([locked], nextTo: nil)[0]
         await shoot(try XCTUnwrap(lockedController.window), "7-password", into: folder)
