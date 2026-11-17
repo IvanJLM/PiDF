@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11.0 — 2026-11-17
+
+- After a link to another page of the document, a small box at the bottom
+  left says “Back to page 12”: a click takes you back to the spot where you
+  clicked the link, at the zoom you had. After several links it goes back
+  one at a time; its × keeps you where you are. ⌘[ does the same, and ⌘]
+  goes where the link went again. Until now ⌘[ also went back through page
+  turns, not only links.
+
 ## 1.10.1 — 2026-11-11
 
 - Notes are sharp again on macOS 27. Its PDFKit draws every note at one

@@ -56,8 +56,11 @@ are not reading.
   again. Two pages side by side with ⌥⌘2.
 - **Find** (⌘F): every match is highlighted; ⌘G and ⇧⌘G (or Return in the
   search field) walk through them. Selected text is what you look for.
-- **Select and copy text** (⌘C), follow links, and go back after a link with
-  ⌘[.
+- **Select and copy text** (⌘C) and **follow links**. After a link to
+  another page, a small “Back to page N” box at the bottom left takes you
+  back to the spot where you clicked it, at the same zoom; after several
+  links it goes back one at a time, and its × keeps you where you are. ⌘[
+  does the same, ⌘] goes where the link went again.
 - **Remembers where you were**: each document reopens at the page, the spot
   and the zoom you left it at (for the last 200 documents). The page number shows in the title bar.
 - **Follows the file**: when another app saves a new version, PiDF shows it
@@ -111,7 +114,7 @@ For those, Open in Preview hands the document over.
 | ⌥⌘↑ / ⌥⌘↓ | First / last page |
 | ⌥⌘G | Go to page |
 | ⌃⌥ (press and let go) | All the pages in a grid; again or Esc to go back |
-| ⌘[ / ⌘] | Back / forward after a link |
+| ⌘[ / ⌘] | Back to where a link was clicked / where it went |
 | ⌃⌘F | Full screen (Esc to leave) |
 | ⇧⌘R / ⇧⌘P | Show in Finder / open in Preview |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab |

@@ -15,6 +15,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     let pdfView = AnnotatedPDFView(frame: NSRect(x: 0, y: 0, width: 640, height: 820))
     private(set) var chrome: WindowChrome!
     private(set) var findBar: FindBar?
+    /// Where the links clicked went from and to (see LinkHistory).
+    var links = LinkHistory()
+    /// “Back to page N”, at the bottom left, while there is a way back.
+    var backBox: BackBox?
     private var watcher: FileWatcher?
     private var pageObserver: NSObjectProtocol?
     /// The password that unlocked the document, so a new version of the file
@@ -69,6 +73,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         chrome = WindowChrome(window: window)
         pdfView.onNoteMoved = { [weak self] in self?.documentChanged() }
         pdfView.onNoteDoubleClicked = { [weak self] note in self?.editNote(note) }
+        pdfView.onLink = { [weak self] action in self?.follow(action) }
         pageObserver = NotificationCenter.default.addObserver(forName: .PDFViewPageChanged, object: pdfView, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.updatePageNumber() }
         }
@@ -246,14 +251,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
 
     /// Where the document is on screen: the page the title bar shows, the
     /// exact point when it lies on that page, and the zoom.
-    fileprivate struct Spot {
+    struct Spot {
         var pageIndex: Int
         var point: NSPoint?
         var scale: CGFloat
         var autoScales: Bool
     }
 
-    private var spot: Spot {
+    var spot: Spot {
         if let parked { return parked.spot }
         let index = pageIndex
         // The top of the window can show the end of the page before the one
@@ -272,7 +277,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     }
 
     /// Takes the document on screen to `spot`, or as near as its pages allow.
-    private func move(to spot: Spot) {
+    func move(to spot: Spot) {
         if let document = pdfView.document, !document.isLocked {
             if spot.autoScales { pdfView.autoScales = true } else { pdfView.scaleFactor = spot.scale }
             pdfView.layoutDocumentView()
@@ -331,6 +336,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     func reload() {
         guard let fresh = PDFDocument(url: url) else { return }  // still being written: wait for the next change
         if hasUnsavedChanges { return askAboutNewVersion() }
+        forgetLinks()  // the other app's version may have other pages
         // A deleted page put back into another app's version would land among other pages.
         window?.undoManager?.removeAllActions()
         if fresh.isLocked, let password { _ = fresh.unlock(withPassword: password) }
@@ -521,8 +527,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     @objc func goToLastPage(_ sender: Any?) { pdfView.goToLastPage(sender) }
     @objc func goToNextPage(_ sender: Any?) { pdfView.goToNextPage(sender) }
     @objc func goToPreviousPage(_ sender: Any?) { pdfView.goToPreviousPage(sender) }
-    @objc func goBack(_ sender: Any?) { pdfView.goBack(sender) }
-    @objc func goForward(_ sender: Any?) { pdfView.goForward(sender) }
+    // Back and Forward follow the links clicked (see LinkHistory).
 
     @objc func showGoToPage(_ sender: Any?) {
         guard let window, let document = pdf else { return }
@@ -565,6 +570,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         pdfView.select(nil)
         pdfView.isHidden = true
         findBar?.isHidden = true
+        backBox?.isHidden = true
         window?.makeFirstResponder(selector.grid)
     }
 
@@ -589,6 +595,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         selector.removeFromSuperview()
         pdfView.isHidden = false
         findBar?.isHidden = false
+        backBox?.isHidden = false
         window?.makeFirstResponder(pdfView)
     }
 
@@ -907,8 +914,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             return unlocked
         case #selector(goToFirstPage(_:)), #selector(goToPreviousPage(_:)): return unlocked && pdfView.canGoToPreviousPage
         case #selector(goToLastPage(_:)), #selector(goToNextPage(_:)): return unlocked && pdfView.canGoToNextPage
-        case #selector(goBack(_:)): return unlocked && pdfView.canGoBack
-        case #selector(goForward(_:)): return unlocked && pdfView.canGoForward
+        case #selector(goBack(_:)): return unlocked && !isParked && !links.back.isEmpty
+        case #selector(goForward(_:)): return unlocked && !isParked && !links.forward.isEmpty
         case #selector(findNext(_:)), #selector(findPrevious(_:)): return unlocked && findBar?.matches.isEmpty == false
         case #selector(toggleHighlight(_:)):
             // In the find field ⌃H is the field's own (delete backward).

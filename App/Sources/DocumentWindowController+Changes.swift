@@ -143,6 +143,7 @@ extension DocumentWindowController {
 
     private func pagesChanged(showing index: Int) {
         documentChanged()
+        forgetLinks()  // the pages after this one have other numbers now
         go(toIndex: index)
         findBar?.refresh()
         reloadPageSelector()
