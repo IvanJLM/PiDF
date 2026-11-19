@@ -157,7 +157,6 @@ extension DocumentWindowController {
     @objc func rotatePageRight(_ sender: Any?) { rotateCurrentPage(by: 90) }
 
     private func rotateCurrentPage(by degrees: Int) {
-        (window as? DocumentWindow)?.forgetSelectorKeys()
         guard canAnnotate, pageSelector == nil else { return }
         rotatePage(at: pageIndex, by: degrees)
     }

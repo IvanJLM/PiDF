@@ -554,9 +554,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// The grid of all the pages, while it is on screen.
     private(set) var pageSelector: PageSelector?
 
-    /// ⌃A or ⌃⌥: the grid opens at the page on screen; the same keys again or
-    /// Esc go back to exactly where the document was, a double click or Return
-    /// to the page chosen. The document stays as it is underneath.
+    /// ⌃A: the grid opens at the page on screen; ⌃A again or Esc goes back
+    /// to exactly where the document was, a double click or Return to the
+    /// page chosen. The document stays as it is underneath.
     @objc func togglePageSelector(_ sender: Any?) {
         if pageSelector != nil { return closePageSelector() }
         guard parked == nil, let document = pdfView.document, !document.isLocked, let content = window?.contentView else { return }

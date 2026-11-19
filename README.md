@@ -80,9 +80,9 @@ are not reading.
   saved like the marks; ⌘Z turns it back. ⌃← and ⌃→ work too if you free
   them from macOS, which keeps them for changing Spaces (System Settings ›
   Keyboard › Keyboard Shortcuts › Mission Control).
-- **Page selector** (⌃A, ⌃⌥ alone, or View › Page Selector): all the pages
-  in a grid, starting at the one on screen. A double click or Return goes to a
-  page; the same keys again or Esc go back to where you were. It draws only the pages
+- **Page selector** (⌃A, or View › Page Selector): all the pages in a grid,
+  starting at the one on screen. A double click or Return goes to a page; ⌃A
+  again or Esc goes back to where you were. It draws only the pages
   in view and costs nothing until it opens.
 - **Print** (⌘P), with macOS's own sheet.
 - **Show in Finder** (⇧⌘R), **Open in Preview** (⇧⌘P) to sign or fill forms,
@@ -113,7 +113,7 @@ For those, Open in Preview hands the document over.
 | ↑ / ↓ | Scroll a little |
 | ⌥⌘↑ / ⌥⌘↓ | First / last page |
 | ⌥⌘G | Go to page |
-| ⌃A, or ⌃⌥ (press and let go) | All the pages in a grid; again or Esc to go back |
+| ⌃A | All the pages in a grid; again or Esc to go back |
 | ⌘[ / ⌘] | Back to where a link was clicked / where it went |
 | ⌃⌘F | Full screen (Esc to leave) |
 | ⇧⌘R / ⇧⌘P | Show in Finder / open in Preview |
