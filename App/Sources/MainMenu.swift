@@ -56,8 +56,8 @@ enum MainMenu {
         view.addItem(item("Zoom Out", #selector(Doc.zoomOut(_:)), "-"))
         view.addItem(.separator())
         view.addItem(item("Two Pages", #selector(Doc.toggleTwoPages(_:)), "2", [.command, .option]))
-        // Its keys are ⌃⌥ alone, which a menu can't show (see DocumentWindow).
-        view.addItem(item("Page Selector", #selector(Doc.togglePageSelector(_:))))
+        // ⌃⌥ alone works too, but a menu can't show it (see DocumentWindow).
+        view.addItem(item("Page Selector", #selector(Doc.togglePageSelector(_:)), "a", .control))
         view.addItem(.separator())
         view.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
 

@@ -3,8 +3,8 @@ import PDFKit
 import XCTest
 @testable import PiDF
 
-/// ⌃⌥ shows all the pages; ⌃⌥ or Esc goes back, a double click or Return to
-/// the page chosen.
+/// ⌃A or ⌃⌥ shows all the pages; the same keys or Esc go back, a double click
+/// or Return to the page chosen.
 @MainActor
 final class PageSelectorTests: XCTestCase {
     private var app: AppDelegate { NSApp.delegate as! AppDelegate }
@@ -118,6 +118,24 @@ final class PageSelectorTests: XCTestCase {
         controller.showFind(nil)
         try tap(in: window)
         XCTAssertNil(controller.pageSelector)
+        XCTAssertFalse(controller.validateMenuItem(item(#selector(Doc.togglePageSelector(_:)))), "⌃A goes to the start of the line")
+    }
+
+    func testControlAIsTheMenuKey() throws {
+        let view = try XCTUnwrap(NSApp.mainMenu?.item(withTitle: "View")?.submenu)
+        let toggle = try XCTUnwrap(view.item(withTitle: "Page Selector"))
+        XCTAssertEqual(toggle.keyEquivalent, "a")
+        XCTAssertEqual(toggle.keyEquivalentModifierMask, .control)
+    }
+
+    func testASheetKeepsControlA() async throws {
+        let (controller, window, _) = try open(pages: 5)
+        controller.showGoToPage(nil)
+        await waitUntil { window.attachedSheet != nil }
+        XCTAssertFalse(controller.validateMenuItem(item(#selector(Doc.togglePageSelector(_:)))), "the page field's own key")
+        window.endSheet(try XCTUnwrap(window.attachedSheet), returnCode: .alertSecondButtonReturn)
+        await waitUntil { window.attachedSheet == nil }
+        XCTAssertTrue(controller.validateMenuItem(item(#selector(Doc.togglePageSelector(_:)))))
     }
 
     // MARK: Going back and going to a page

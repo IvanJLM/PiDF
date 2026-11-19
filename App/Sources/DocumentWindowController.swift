@@ -554,9 +554,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     /// The grid of all the pages, while it is on screen.
     private(set) var pageSelector: PageSelector?
 
-    /// ⌃⌥: the grid opens at the page on screen; ⌃⌥ again or Esc goes back
-    /// to exactly where the document was, a double click or Return to the
-    /// page chosen. The document stays as it is underneath.
+    /// ⌃A or ⌃⌥: the grid opens at the page on screen; the same keys again or
+    /// Esc go back to exactly where the document was, a double click or Return
+    /// to the page chosen. The document stays as it is underneath.
     @objc func togglePageSelector(_ sender: Any?) {
         if pageSelector != nil { return closePageSelector() }
         guard parked == nil, let document = pdfView.document, !document.isLocked, let content = window?.contentView else { return }
@@ -903,7 +903,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         switch menuItem.action {
         case #selector(togglePageSelector(_:)):
             menuItem.state = pageSelector == nil ? .off : .on
-            return unlocked
+            // In a text field or a sheet ⌃A is the field's own (start of line).
+            return unlocked && !(window?.firstResponder is NSText) && window?.attachedSheet == nil
         case #selector(zoomIn(_:)): return unlocked && pdfView.canZoomIn
         case #selector(zoomOut(_:)): return unlocked && pdfView.canZoomOut
         case #selector(zoomToFit(_:)):
