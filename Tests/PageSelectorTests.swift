@@ -3,8 +3,8 @@ import PDFKit
 import XCTest
 @testable import PiDF
 
-/// ⌃A or ⌃⌥ shows all the pages; the same keys or Esc go back, a double click
-/// or Return to the page chosen.
+/// ⌃A shows all the pages; ⌃A again or Esc goes back, a double click or
+/// Return to the page chosen.
 @MainActor
 final class PageSelectorTests: XCTestCase {
     private var app: AppDelegate { NSApp.delegate as! AppDelegate }
@@ -46,78 +46,15 @@ final class PageSelectorTests: XCTestCase {
 
     // MARK: The keys
 
-    func testControlOptionAloneOpensAndCloses() throws {
+    func testControlOptionAloneDoesNothing() throws {
         let (controller, window, _) = try open(pages: 5)
-        XCTAssertNil(controller.pageSelector)
         try tap(in: window)
-        XCTAssertNotNil(controller.pageSelector)
-        XCTAssertEqual(controller.pdfView.isHidden, true, "nothing to draw underneath")
-        try tap(in: window)
-        XCTAssertNil(controller.pageSelector)
-        XCTAssertEqual(controller.pdfView.isHidden, false)
-    }
-
-    func testItWaitsForTheKeysToGoUp() throws {
-        let (controller, window, _) = try open(pages: 5)
-        try flags([.control, .option], in: window)
-        XCTAssertNil(controller.pageSelector, "may still become another shortcut")
-        try flags([], in: window)
-        XCTAssertNotNil(controller.pageSelector)
-    }
-
-    func testAnotherKeyOrAClickInBetweenIsAnotherShortcut() throws {
-        let (controller, window, _) = try open(pages: 5)
-        try flags([.control, .option], in: window)
-        try key(0, "a", in: window, modifiers: [.control, .option])
-        try flags([], in: window)
-        XCTAssertNil(controller.pageSelector, "⌃⌥A")
-
-        try flags([.control, .option], in: window)
-        try flags([.control, .option, .command], in: window)
-        try flags([], in: window)
-        XCTAssertNil(controller.pageSelector, "⌃⌥⌘")
-
-        // The click lands on a note, which PiDF handles itself: PDFView would
-        // take a ⌃-click for a right click and wait in its context menu.
-        let page = try XCTUnwrap(controller.pdf?.page(at: 0))
-        let note = controller.add(note: "Click here", at: NSPoint(x: 100, y: 600), on: page)
-        controller.pdfView.select(nil)
-        let inWindow = controller.pdfView.convert(controller.pdfView.convert(NSPoint(x: note.bounds.midX, y: note.bounds.midY), from: page), to: nil)
-        try flags([.control, .option], in: window)
-        window.sendEvent(try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseDown, location: inWindow, modifierFlags: [.control, .option], timestamp: 0,
-            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)))
-        XCTAssertTrue(controller.pdfView.selectedNote === note, "the click went to the note")
-        window.sendEvent(try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseUp, location: inWindow, modifierFlags: [.control, .option], timestamp: 0,
-            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 0)))
-        try flags([], in: window)
-        XCTAssertNil(controller.pageSelector, "⌃⌥ click")
-    }
-
-    func testRotatingWithControlOptionArrowDoesNotOpenIt() throws {
-        let (controller, window, _) = try open(pages: 5)
-        try flags([.control, .option], in: window)
-        controller.rotatePageRight(nil)  // what the menu does with ⌃⌥→, without the window seeing the key
-        try flags([], in: window)
-        XCTAssertNil(controller.pageSelector)
-        XCTAssertEqual(controller.pdf?.page(at: 0)?.rotation, 90)
-    }
-
-    func testOneModifierAloneDoesNothing() throws {
-        let (controller, window, _) = try open(pages: 5)
-        try flags(.control, in: window)
-        try flags([], in: window)
-        try flags(.option, in: window)
-        try flags([], in: window)
-        XCTAssertNil(controller.pageSelector)
+        XCTAssertNil(controller.pageSelector, "only ⌃A opens it")
     }
 
     func testTheFindFieldKeepsItsKeys() throws {
-        let (controller, window, _) = try open(pages: 5)
+        let (controller, _, _) = try open(pages: 5)
         controller.showFind(nil)
-        try tap(in: window)
-        XCTAssertNil(controller.pageSelector)
         XCTAssertFalse(controller.validateMenuItem(item(#selector(Doc.togglePageSelector(_:)))), "⌃A goes to the start of the line")
     }
 

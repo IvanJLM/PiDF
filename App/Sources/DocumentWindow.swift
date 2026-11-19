@@ -9,7 +9,6 @@ final class DocumentWindow: NSWindow {
     /// before PDFKit's own views see the key, so it works wherever the click
     /// left the focus, except while typing in a text field.
     override func sendEvent(_ event: NSEvent) {
-        followSelectorKeys(event)
         // A click on a note, and the drag that may follow, are the note's
         // (select, move, edit), not PDFKit's.
         if let controller = windowController as? DocumentWindowController {
@@ -45,37 +44,6 @@ final class DocumentWindow: NSWindow {
             }
         }
         super.sendEvent(event)
-    }
-
-    /// ⌃ and ⌥ held together, then let go with nothing else in between.
-    private var selectorKeysHeld = false
-
-    /// The keys held were part of a shortcut the menu took: ⌃⌥← and ⌃⌥→ may
-    /// never reach this window as key events.
-    func forgetSelectorKeys() { selectorKeysHeld = false }
-
-    /// ⌃⌥ alone opens and closes the page selector, when the keys go up: on
-    /// the way down they may be the start of another shortcut. Only the events
-    /// the window gets anyway: nothing runs while no key is pressed.
-    private func followSelectorKeys(_ event: NSEvent) {
-        switch event.type {
-        case .flagsChanged:
-            let held = event.modifierFlags.intersection([.command, .option, .control, .shift])
-            if held == [.control, .option] {
-                selectorKeysHeld = true
-            } else if held.isEmpty, selectorKeysHeld {
-                selectorKeysHeld = false
-                if !(firstResponder is NSText), attachedSheet == nil {
-                    (windowController as? DocumentWindowController)?.togglePageSelector(nil)
-                }
-            } else if !held.isSubset(of: [.control, .option]) {
-                selectorKeysHeld = false
-            }
-        case .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel:
-            selectorKeysHeld = false
-        default:
-            break
-        }
     }
 }
 

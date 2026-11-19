@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.13.0 — 2026-11-19
+
+- The page selector opens and closes only with ⌃A (or View › Page Selector).
+  Pressing ⌃⌥ alone no longer does anything; ⌃⌥← and ⌃⌥→ still rotate the
+  page.
+
 ## 1.12.0 — 2026-11-19
 
 - ⌃A opens and closes the page selector, and View › Page Selector now shows
