@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.12.0 — 2026-11-19
+
+- ⌃A opens and closes the page selector, and View › Page Selector now shows
+  it. ⌃⌥ alone still works too. In the find field, a note being written or
+  the Go to Page box, ⌃A stays what it always is there: the start of the line.
+
 ## 1.11.0 — 2026-11-17
 
 - After a link to another page of the document, a small box at the bottom
