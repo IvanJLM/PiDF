@@ -151,8 +151,8 @@ extension DocumentWindowController {
 
     // MARK: Rotating pages
 
-    /// ⌃⌥← / ⌃⌥→ (and ⌃← / ⌃→, see DocumentWindow): turns the page on screen
-    /// a quarter turn. Saved in the file as the marks are; ⌘Z turns it back.
+    /// ⌃Q / ⌃W: turns the page on screen a quarter turn, left or right.
+    /// Saved in the file as the marks are; ⌘Z turns it back.
     @objc func rotatePageLeft(_ sender: Any?) { rotateCurrentPage(by: -90) }
     @objc func rotatePageRight(_ sender: Any?) { rotateCurrentPage(by: 90) }
 

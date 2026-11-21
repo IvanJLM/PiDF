@@ -3,7 +3,7 @@ import PDFKit
 import XCTest
 @testable import PiDF
 
-/// ⌃⌥← / ⌃⌥→ (and ⌃← / ⌃→) rotate the page on screen; ⌘P prints.
+/// ⌃Q / ⌃W rotate the page on screen; ⌘P prints.
 @MainActor
 final class RotatePrintTests: XCTestCase {
     private var app: AppDelegate { NSApp.delegate as! AppDelegate }
@@ -55,26 +55,36 @@ final class RotatePrintTests: XCTestCase {
         XCTAssertEqual(controller.pageIndex, index)
     }
 
-    func testControlArrowsRotateWhereMacOSLetsThemThrough() throws {
-        let (controller, _) = try open(pages: 2)
-        let window = try XCTUnwrap(controller.window)
-        window.sendEvent(try key(NSRightArrowFunctionKey, .control, code: 124))
-        XCTAssertEqual(rotation(controller, 0), 90)
-        window.sendEvent(try key(NSLeftArrowFunctionKey, .control, code: 123))
-        XCTAssertEqual(rotation(controller, 0), 0)
-        XCTAssertEqual(controller.pageIndex, 0, "not a page turn")
-    }
-
-    func testTheMenuKeysAreControlOptionArrows() throws {
+    func testTheMenuKeysAreControlQAndW() throws {
         let edit = try XCTUnwrap(NSApp.mainMenu?.item(withTitle: "Edit")?.submenu)
         let left = try XCTUnwrap(edit.item(withTitle: "Rotate Page Left"))
         let right = try XCTUnwrap(edit.item(withTitle: "Rotate Page Right"))
         XCTAssertEqual(left.action, #selector(Doc.rotatePageLeft(_:)))
         XCTAssertEqual(right.action, #selector(Doc.rotatePageRight(_:)))
-        XCTAssertEqual(left.keyEquivalent, String(Character(UnicodeScalar(UInt16(NSLeftArrowFunctionKey))!)))
-        XCTAssertEqual(right.keyEquivalent, String(Character(UnicodeScalar(UInt16(NSRightArrowFunctionKey))!)))
-        XCTAssertEqual(left.keyEquivalentModifierMask, [.control, .option])
-        XCTAssertEqual(right.keyEquivalentModifierMask, [.control, .option])
+        XCTAssertEqual(left.keyEquivalent, "q")
+        XCTAssertEqual(right.keyEquivalent, "w")
+        XCTAssertEqual(left.keyEquivalentModifierMask, .control)
+        XCTAssertEqual(right.keyEquivalentModifierMask, .control)
+    }
+
+    func testControlArrowsNoLongerRotate() throws {
+        let (controller, _) = try open(pages: 2)
+        let window = try XCTUnwrap(controller.window)
+        window.sendEvent(try key(NSRightArrowFunctionKey, .control, code: 124))
+        window.sendEvent(try key(NSRightArrowFunctionKey, .control, code: 124))
+        XCTAssertEqual(rotation(controller, 0), 0, "only ⌃Q and ⌃W turn the page")
+    }
+
+    func testASheetKeepsControlQAndW() async throws {
+        let (controller, _) = try open(pages: 3)
+        let window = try XCTUnwrap(controller.window)
+        controller.showGoToPage(nil)
+        await waitUntil { window.attachedSheet != nil }
+        XCTAssertFalse(controller.validateMenuItem(item(#selector(Doc.rotatePageLeft(_:)))), "typed in the page field")
+        XCTAssertFalse(controller.validateMenuItem(item(#selector(Doc.rotatePageRight(_:)))))
+        window.endSheet(try XCTUnwrap(window.attachedSheet), returnCode: .alertSecondButtonReturn)
+        await waitUntil { window.attachedSheet == nil }
+        XCTAssertTrue(controller.validateMenuItem(item(#selector(Doc.rotatePageRight(_:)))))
     }
 
     func testRotationReachesTheFileAndUndoWorksAfterASave() throws {
@@ -127,10 +137,7 @@ final class RotatePrintTests: XCTestCase {
         let folder = try Fixtures.folder(self)
         let (finding, _) = try open(pages: 2, in: folder)
         finding.showFind(nil)
-        XCTAssertFalse(finding.validateMenuItem(item(#selector(Doc.rotatePageLeft(_:)))), "the keys select text in the field")
-        let window = try XCTUnwrap(finding.window)
-        window.sendEvent(try key(NSRightArrowFunctionKey, .control, code: 124))
-        XCTAssertEqual(rotation(finding, 0), 0)
+        XCTAssertFalse(finding.validateMenuItem(item(#selector(Doc.rotatePageLeft(_:)))), "the keys are the field's")
 
         let plain = try Fixtures.pdf(in: folder, name: "readonly.pdf", pageCount: 2)
         try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: plain.path)
