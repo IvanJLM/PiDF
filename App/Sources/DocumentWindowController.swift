@@ -932,8 +932,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             menuItem.title = "Delete Page \(pageIndex + 1)"
             return !(window?.firstResponder is NSText) && canAnnotate && (pdf?.pageCount ?? 0) > 1
         case #selector(rotatePageLeft(_:)), #selector(rotatePageRight(_:)):
-            // In the find field these keys select text.
-            return !(window?.firstResponder is NSText) && canAnnotate
+            // ⌃Q and ⌃W are typed in a text field or a sheet (find, a note,
+            // Go to Page), never a turn of the page behind it.
+            return !(window?.firstResponder is NSText) && window?.attachedSheet == nil && canAnnotate
         case #selector(printDocument(_:)): return unlocked && pdf?.allowsPrinting == true
         case #selector(saveDocument(_:)): return hasUnsavedChanges
         case #selector(showInFinder(_:)), #selector(openInPreview(_:)): return true

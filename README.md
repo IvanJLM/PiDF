@@ -76,10 +76,8 @@ are not reading.
   the document and show in Preview or any other viewer.
 - **Delete a page** (⌃D): the page on screen goes, with the marks' next
   save; ⌘Z puts it back while the window is open.
-- **Rotate a page** (⌃⌥← / ⌃⌥→): the page on screen turns a quarter turn,
-  saved like the marks; ⌘Z turns it back. ⌃← and ⌃→ work too if you free
-  them from macOS, which keeps them for changing Spaces (System Settings ›
-  Keyboard › Keyboard Shortcuts › Mission Control).
+- **Rotate a page** (⌃Q left / ⌃W right): the page on screen turns a
+  quarter turn, saved like the marks; ⌘Z turns it back.
 - **Page selector** (⌃A, or View › Page Selector): all the pages in a grid,
   starting at the one on screen. A double click or Return goes to a page; ⌃A
   again or Esc goes back to where you were. It draws only the pages
@@ -102,7 +100,7 @@ For those, Open in Preview hands the document over.
 | ⌃N | Add a note where the pointer is (note selected: edit it) |
 | Delete | Remove the selected note |
 | ⌃D | Delete the page on screen |
-| ⌃⌥← / ⌃⌥→ | Rotate the page on screen (also ⌃← / ⌃→ if freed from macOS) |
+| ⌃Q / ⌃W | Rotate the page on screen left / right |
 | ⌘Z / ⇧⌘Z | Undo / redo deleting or rotating a page |
 | ⌘S | Save the highlights and notes now |
 | ⌘P | Print |

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.14.0 — 2026-11-21
+
+- ⌃Q turns the page on screen left and ⌃W turns it right, as Edit › Rotate
+  Page Left and Rotate Page Right now show. They replace ⌃⌥← / ⌃⌥→ and
+  ⌃← / ⌃→, keys that macOS and other apps can claim for themselves, so they
+  didn't always reach PiDF. While you type in the find field, a note or the
+  Go to Page box, ⌃Q and ⌃W are left to the text.
+
 ## 1.13.0 — 2026-11-19
 
 - The page selector opens and closes only with ⌃A (or View › Page Selector).

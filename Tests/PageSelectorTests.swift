@@ -301,7 +301,7 @@ final class PageSelectorTests: XCTestCase {
     // MARK: With everything else
 
     func testPageActionsWaitWhileItIsOpen() throws {
-        let (controller, window, _) = try open(pages: 5)
+        let (controller, _, _) = try open(pages: 5)
         controller.togglePageSelector(nil)
         for action in [#selector(Doc.deletePage(_:)), #selector(Doc.rotatePageRight(_:)), #selector(Doc.goToNextPage(_:)),
                        #selector(Doc.showFind(_:)), #selector(Doc.zoomIn(_:))] {
@@ -311,8 +311,6 @@ final class PageSelectorTests: XCTestCase {
         XCTAssertTrue(controller.validateMenuItem(toggle))
         XCTAssertEqual(toggle.state, .on)
         XCTAssertTrue(controller.validateMenuItem(item(#selector(Doc.printDocument(_:)))))
-        try key(124, arrow(NSRightArrowFunctionKey), in: window, modifiers: [.control, .numericPad, .function])
-        XCTAssertEqual(controller.pdf?.page(at: 0)?.rotation, 0, "⌃→ doesn't turn a page you can't see")
     }
 
     func testAnUndoShowsInTheGrid() throws {

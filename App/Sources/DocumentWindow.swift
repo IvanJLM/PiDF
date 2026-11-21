@@ -3,11 +3,9 @@ import PDFKit
 
 /// The windows PiDF shows documents in, so they can be told from panels.
 final class DocumentWindow: NSWindow {
-    /// ← and → turn a whole page; ↑ and ↓ still scroll a little. ⌃← and ⌃→
-    /// rotate the page, where macOS lets them through (out of the box they
-    /// change Spaces; ⌃⌥← and ⌃⌥→ in the menu always work). Caught here,
-    /// before PDFKit's own views see the key, so it works wherever the click
-    /// left the focus, except while typing in a text field.
+    /// ← and → turn a whole page; ↑ and ↓ still scroll a little. Caught
+    /// here, before PDFKit's own views see the key, so it works wherever the
+    /// click left the focus, except while typing in a text field.
     override func sendEvent(_ event: NSEvent) {
         // A click on a note, and the drag that may follow, are the note's
         // (select, move, edit), not PDFKit's.
@@ -30,12 +28,6 @@ final class DocumentWindow: NSWindow {
                 return
             case (NSRightArrowFunctionKey, []):
                 controller.goToNextPage(nil)
-                return
-            case (NSLeftArrowFunctionKey, .control):
-                controller.rotatePageLeft(nil)
-                return
-            case (NSRightArrowFunctionKey, .control):
-                controller.rotatePageRight(nil)
                 return
             case (0x7F, []), (NSDeleteFunctionKey, []):  // Delete, forward delete
                 if controller.deleteSelectedNote() { return }
