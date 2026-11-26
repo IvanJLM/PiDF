@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.15.0 — 2026-11-26
+
+- File › Save As… (⇧⌘S) saves the document in another file, with the name
+  and folder you choose. It saves what is on screen: highlights, notes and
+  pages turned or deleted that aren't saved yet. The tab then shows the new
+  file and goes on saving the marks there; the original stays as it was last
+  saved. A document with nothing changed is copied as it is, so a protected
+  one keeps its password.
+
 ## 1.14.0 — 2026-11-21
 
 - ⌃Q turns the page on screen left and ⌃W turns it right, as Edit › Rotate

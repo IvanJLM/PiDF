@@ -1,5 +1,6 @@
 import AppKit
 import PDFKit
+import UniformTypeIdentifiers
 
 /// One document, in its own window or as one tab of a window.
 ///
@@ -11,7 +12,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
     static let tabbingIdentifier = "PiDF"
     private static let twoPagesKey = "TwoPages"
 
-    let url: URL
+    /// The file shown; another one after Save As.
+    private(set) var url: URL
     let pdfView = AnnotatedPDFView(frame: NSRect(x: 0, y: 0, width: 640, height: 820))
     private(set) var chrome: WindowChrome!
     private(set) var findBar: FindBar?
@@ -748,6 +750,97 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         return alert
     }
 
+    // MARK: Save As
+
+    enum SaveAsFailure: Error {
+        /// Another tab shows that file: writing over it would pull it from under that tab.
+        case openInAnotherTab
+        case notWritten
+    }
+
+    /// ⇧⌘S: the document as it is on screen, with the marks and the pages
+    /// turned or deleted not saved yet, in a file chosen in macOS's own
+    /// panel. The tab then shows that file; the original stays as it was
+    /// last saved.
+    @objc func saveDocumentAs(_ sender: Any?) {
+        guard let window, pdf != nil, window.attachedSheet == nil else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.canCreateDirectories = true
+        panel.directoryURL = url.deletingLastPathComponent()
+        panel.nameFieldStringValue = url.lastPathComponent
+        panel.beginSheetModal(for: window) { [weak self] response in
+            MainActor.assumeIsolated {
+                guard let self, !self.isClosed, response == .OK, let target = panel.url else { return }
+                do {
+                    try self.save(as: target)
+                } catch {
+                    // After the panel has gone: a sheet can't follow it while it closes.
+                    DispatchQueue.main.async { self.showSaveAsFailed(error as? SaveAsFailure, target) }
+                }
+            }
+        }
+    }
+
+    /// Writes the document to `target` and makes that file this tab's: its
+    /// name in the title bar, the changes followed from then on, where it
+    /// was left. With nothing changed here the file itself is copied, byte
+    /// for byte: quicker, and a protected document keeps its password.
+    func save(as target: URL) throws {
+        let target = target.standardizedFileURL
+        if target == url {
+            guard saveChanges() else { throw SaveAsFailure.notWritten }
+            return
+        }
+        let others = (NSApp.delegate as? AppDelegate)?.controllers.filter { $0 !== self } ?? []
+        if others.contains(where: { $0.url == target }) { throw SaveAsFailure.openInAnotherTab }
+        waitForBackgroundSave()
+        guard let document = pdf,
+              let fresh = hasUnsavedChanges ? Self.write(document, to: target) : Self.copy(url, to: target) else {
+            throw SaveAsFailure.notWritten
+        }
+        if fresh.isLocked, let password { _ = fresh.unlock(withPassword: password) }
+        rememberPosition()  // the original reopens where it was left
+        watcher?.stop()
+        url = target
+        watcher = FileWatcher(url: target) { [weak self] in self?.reload() }
+        window?.title = target.lastPathComponent
+        window?.representedURL = target
+        savedChangeCount = changeCount
+        window?.isDocumentEdited = false
+        replace(with: fresh)
+        rememberPosition()
+    }
+
+    private func showSaveAsFailed(_ failure: SaveAsFailure?, _ target: URL) {
+        guard let window, !isClosed, window.attachedSheet == nil else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        if failure == .openInAnotherTab {
+            alert.messageText = "“\(target.lastPathComponent)” is open in another tab."
+            alert.informativeText = "Close that tab first, or save with another name."
+        } else {
+            alert.messageText = "“\(target.lastPathComponent)” couldn’t be saved."
+            alert.informativeText = "Check that the folder can be written, then try again."
+        }
+        alert.beginSheetModal(for: window)
+    }
+
+    /// Copies the file at `url` to `target` as `write` writes: next to it
+    /// first, so a failure leaves what was at `target` as it was. Returns
+    /// the copy, opened.
+    nonisolated static func copy(_ url: URL, to target: URL) -> PDFDocument? {
+        let manager = FileManager.default
+        guard let folder = try? manager.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: target, create: true) else {
+            return nil
+        }
+        defer { try? manager.removeItem(at: folder) }
+        let temporary = folder.appendingPathComponent(target.lastPathComponent)
+        guard (try? manager.copyItem(at: url, to: temporary)) != nil,
+              (try? manager.replaceItemAt(target, withItemAt: temporary)) != nil else { return nil }
+        return PDFDocument(url: target)
+    }
+
     /// Back after its window closed, because the marks couldn't be written
     /// then (see AppDelegate.reopen).
     func showMarksNotSaved() {
@@ -893,8 +986,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
         // With the grid open no page is "on screen": what acts on one waits.
         if pageSelector != nil {
             switch menuItem.action {
-            case #selector(togglePageSelector(_:)), #selector(saveDocument(_:)), #selector(printDocument(_:)),
-                 #selector(showInFinder(_:)), #selector(openInPreview(_:)):
+            case #selector(togglePageSelector(_:)), #selector(saveDocument(_:)), #selector(saveDocumentAs(_:)),
+                 #selector(printDocument(_:)), #selector(showInFinder(_:)), #selector(openInPreview(_:)):
                 break
             default:
                 return false
@@ -937,6 +1030,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSMe
             return !(window?.firstResponder is NSText) && window?.attachedSheet == nil && canAnnotate
         case #selector(printDocument(_:)): return unlocked && pdf?.allowsPrinting == true
         case #selector(saveDocument(_:)): return hasUnsavedChanges
+        case #selector(saveDocumentAs(_:)): return pdf != nil && window?.attachedSheet == nil
         case #selector(showInFinder(_:)), #selector(openInPreview(_:)): return true
         default: return unlocked
         }

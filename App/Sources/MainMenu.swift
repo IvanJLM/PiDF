@@ -21,6 +21,7 @@ enum MainMenu {
         file.addItem(item("Open…", #selector(AppDelegate.showOpenPanel(_:)), "o"))
         file.addItem(item("Close", #selector(NSWindow.performClose(_:)), "w"))
         file.addItem(item("Save", #selector(Doc.saveDocument(_:)), "s"))
+        file.addItem(item("Save As…", #selector(Doc.saveDocumentAs(_:)), "s", [.command, .shift]))
         file.addItem(item("Print…", #selector(Doc.printDocument(_:)), "p"))
         file.addItem(.separator())
         file.addItem(item("Show in Finder", #selector(Doc.showInFinder(_:)), "r", [.command, .shift]))
