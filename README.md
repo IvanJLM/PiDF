@@ -82,6 +82,9 @@ are not reading.
   starting at the one on screen. A double click or Return goes to a page; ⌃A
   again or Esc goes back to where you were. It draws only the pages
   in view and costs nothing until it opens.
+- **Save As** (⇧⌘S): the document as it is on screen, marks not saved yet
+  included, in a new file; the tab then shows that file and the original
+  stays as it was last saved.
 - **Print** (⌘P), with macOS's own sheet.
 - **Show in Finder** (⇧⌘R), **Open in Preview** (⇧⌘P) to sign or fill forms,
   and **full screen** (⌃⌘F).
@@ -103,6 +106,7 @@ For those, Open in Preview hands the document over.
 | ⌃Q / ⌃W | Rotate the page on screen left / right |
 | ⌘Z / ⇧⌘Z | Undo / redo deleting or rotating a page |
 | ⌘S | Save the highlights and notes now |
+| ⇧⌘S | Save As: the document in a new file, which the tab then shows |
 | ⌘P | Print |
 | ⌘+ / ⌘− | Zoom in / out |
 | ⌘0 / ⌘9 | Actual size / fit the width |
