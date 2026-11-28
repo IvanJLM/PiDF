@@ -4,9 +4,7 @@
 # Usage: ./scripts/install.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
-trap ./scripts/forget-builds.sh EXIT  # keep build copies out of "Open With"
-
-command -v xcodegen >/dev/null || { echo "Install XcodeGen first: brew install xcodegen"; exit 1; }
+source scripts/tidy.sh  # nothing stays outside the project when done
 
 # A stable signature keeps macOS from treating every update as a new app.
 IDENTITY="${PIDF_SIGN_IDENTITY:-}"
@@ -14,8 +12,8 @@ if [[ -z "$IDENTITY" ]]; then
   IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/"/ { print $2; exit }')
 fi
 
-xcodegen generate --quiet
-xcodebuild -project PiDF.xcodeproj -scheme PiDF -configuration Release \
+generate
+xcbuild -project PiDF.xcodeproj -scheme PiDF -configuration Release \
   -derivedDataPath build/DD -quiet build
 
 APP="build/DD/Build/Products/Release/PiDF.app"

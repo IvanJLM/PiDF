@@ -8,7 +8,7 @@
 #        (without a document, a 300-page test document is generated)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-trap ./scripts/forget-builds.sh EXIT  # keep build copies out of "Open With"
+source scripts/tidy.sh  # nothing stays outside the project when done
 DOC=""; COMPARE=0
 for arg in "$@"; do
   if [[ "$arg" == "--compare" ]]; then COMPARE=1; else DOC="${arg:A}"; fi
@@ -16,8 +16,8 @@ done
 WARMUP=8
 SAMPLES=10
 
-xcodegen generate --quiet
-xcodebuild -project PiDF.xcodeproj -scheme PiDF -configuration Release \
+generate
+xcbuild -project PiDF.xcodeproj -scheme PiDF -configuration Release \
   -derivedDataPath build/Bench -quiet build
 PIDF="$PWD/build/Bench/Build/Products/Release/PiDF.app"
 if [[ -z "$DOC" ]]; then

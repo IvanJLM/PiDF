@@ -24,7 +24,7 @@ final class KeyTests: XCTestCase {
     }
 
     private func open(pages: Int) throws -> (DocumentWindowController, NSWindow) {
-        let url = try Fixtures.pdf(in: try Fixtures.folder(self), pageCount: pages)
+        let url = try Fixtures.pdf(in: try Scratch.folder(self), pageCount: pages)
         let controller = app.open([url], nextTo: nil)[0]
         return (controller, try XCTUnwrap(controller.window))
     }

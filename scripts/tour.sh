@@ -4,11 +4,11 @@
 # Usage: ./scripts/tour.sh [folder]   (default: build/Tour)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-trap ./scripts/forget-builds.sh EXIT  # keep build copies out of "Open With"
+source scripts/tidy.sh  # nothing stays outside the project when done
 OUT="${1:-build/Tour}"
 OUT="${OUT:A}"
 rm -rf "$OUT"; mkdir -p "$OUT"
-xcodegen generate --quiet
+generate
 (
   set +e  # a failed capture must not stop the loop
   # The test writes a request file; capture that window, then remove it.
@@ -22,7 +22,8 @@ xcodegen generate --quiet
     if [[ -f "$OUT/done" ]]; then break; fi
   done
 ) &
-TEST_RUNNER_PIDF_TOUR="$OUT" xcodebuild -project PiDF.xcodeproj -scheme PiDF -configuration Debug \
+export TEST_RUNNER_PIDF_TOUR="$OUT"
+xcbuild -project PiDF.xcodeproj -scheme PiDF -configuration Debug \
   -destination 'platform=macOS,arch=arm64' -derivedDataPath build/Test -quiet test -only-testing:PiDFTests/TourTests
 touch "$OUT/done"; wait
 ls "$OUT"/*.png

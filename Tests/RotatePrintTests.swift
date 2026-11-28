@@ -15,7 +15,7 @@ final class RotatePrintTests: XCTestCase {
     }
 
     private func open(pages: Int, in folder: URL? = nil) throws -> (Doc, URL) {
-        let url = try Fixtures.pdf(in: try folder ?? Fixtures.folder(self), pageCount: pages)
+        let url = try Fixtures.pdf(in: try folder ?? Scratch.folder(self), pageCount: pages)
         return (app.open([url], nextTo: nil)[0], url)
     }
 
@@ -134,7 +134,7 @@ final class RotatePrintTests: XCTestCase {
     }
 
     func testReadOnlyFilesAndTheFindFieldKeepTheirRotation() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let (finding, _) = try open(pages: 2, in: folder)
         finding.showFind(nil)
         XCTAssertFalse(finding.validateMenuItem(item(#selector(Doc.rotatePageLeft(_:)))), "the keys are the field's")
@@ -242,7 +242,7 @@ final class RotatePrintTests: XCTestCase {
     }
 
     func testPrintIsNotOfferedForALockedDocument() throws {
-        let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent("locked.pdf"), pages: ["Secret"], password: "fixture-pw")
+        let url = try Fixtures.pdf(at: try Scratch.folder(self).appendingPathComponent("locked.pdf"), pages: ["Secret"], password: "fixture-pw")
         let controller = app.open([url], nextTo: nil)[0]
         XCTAssertFalse(controller.validateMenuItem(item(#selector(Doc.printDocument(_:)))))
         if let window = controller.window, let sheet = window.attachedSheet {
@@ -253,7 +253,7 @@ final class RotatePrintTests: XCTestCase {
     /// Prints to a PDF, without the sheet: every page comes out, with the
     /// marks the file doesn't have yet.
     func testPrintsTheDocumentAsItIsOnScreen() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let (controller, _) = try open(pages: 3, in: folder)
         controller.rotatePageRight(nil)
         let page = try XCTUnwrap(controller.pdf?.page(at: 0))

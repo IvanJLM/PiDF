@@ -17,7 +17,7 @@ final class ChromeTests: XCTestCase {
     private var titlebar: (NSWindow) -> NSView? = { $0.standardWindowButton(.closeButton)?.superview?.superview }
 
     func testTitleBarShowsBrieflyThenHides() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let controller = app.open([try Fixtures.pdf(in: folder, pageCount: 3)], nextTo: nil)[0]
         let window = try XCTUnwrap(controller.window)
         XCTAssertTrue(controller.chrome.isShown, "shown when the document opens")
@@ -29,7 +29,7 @@ final class ChromeTests: XCTestCase {
     }
 
     func testPointerOverTheTopBringsItBack() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let controller = app.open([try Fixtures.pdf(in: folder, pageCount: 3)], nextTo: nil)[0]
         let window = try XCTUnwrap(controller.window)
         let chrome = controller.chrome!
@@ -51,7 +51,7 @@ final class ChromeTests: XCTestCase {
     }
 
     func testHoverZoneCoversTitleBarAndTabs() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let first = app.open([try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 3)], nextTo: nil)[0]
         let content = try XCTUnwrap(first.window?.contentView)
         let alone = first.chrome.barHeight
@@ -67,7 +67,7 @@ final class ChromeTests: XCTestCase {
     }
 
     func testFullScreenLeavesTheTitleBarToMacOS() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let controller = app.open([try Fixtures.pdf(in: folder, pageCount: 3)], nextTo: nil)[0]
         let chrome = controller.chrome!
         chrome.suspend()

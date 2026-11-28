@@ -21,7 +21,7 @@ final class LinkTests: XCTestCase {
 
     /// Ten pages; page 1 links to page 7, page 7 to page 9.
     private func open() async throws -> Doc {
-        let url = try Fixtures.pdf(in: try Fixtures.folder(self), pageCount: 10)
+        let url = try Fixtures.pdf(in: try Scratch.folder(self), pageCount: 10)
         let document = try XCTUnwrap(PDFDocument(url: url))
         func link(on from: Int, at bounds: NSRect, to page: Int) throws {
             let link = PDFAnnotation(bounds: bounds, forType: .link, withProperties: nil)
@@ -179,7 +179,7 @@ final class LinkTests: XCTestCase {
     func testTheWayBackIsKeptByEachTab() async throws {
         let controller = try await open()
         try await click(toSeven, onPage: 0, in: controller)
-        let other = app.open([try Fixtures.pdf(in: try Fixtures.folder(self), pageCount: 3)], nextTo: nil)[0]
+        let other = app.open([try Fixtures.pdf(in: try Scratch.folder(self), pageCount: 3)], nextTo: nil)[0]
         XCTAssertNil(other.backBox)
         XCTAssertFalse(other.validateMenuItem(item(#selector(Doc.goBack(_:)))))
         XCTAssertEqual(controller.links.back.count, 1)

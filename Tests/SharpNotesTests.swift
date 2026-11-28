@@ -57,7 +57,7 @@ final class SharpNotesTests: XCTestCase {
     func testNotesAreDrawnAtTheResolutionTheyAreShownAt() async throws {
         let restore = try breakNoteLayers()
         defer { restore() }
-        let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent("sharp.pdf"), pages: ["first page text"])
+        let url = try Fixtures.pdf(at: try Scratch.folder(self).appendingPathComponent("sharp.pdf"), pages: ["first page text"])
         let controller = app.open([url], nextTo: nil)[0]
         controller.pdfView.scaleFactor = 2.5
         let page = try XCTUnwrap(controller.pdf?.page(at: 0))

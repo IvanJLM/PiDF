@@ -5,13 +5,6 @@ import XCTest
 /// Writes small test PDFs with Core Graphics, so the repository needs no
 /// binary fixtures.
 enum Fixtures {
-    static func folder(_ test: XCTestCase) throws -> URL {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("PiDFTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        test.addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
-        return folder
-    }
-
     /// A PDF with one page per string, each page showing its string.
     /// `size` is the page size in points (A4 portrait by default); the text
     /// is set in `font`.
