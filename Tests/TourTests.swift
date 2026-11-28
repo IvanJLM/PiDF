@@ -21,11 +21,9 @@ final class TourTests: XCTestCase {
 
     func testTour() async throws {
         guard let folder = ProcessInfo.processInfo.environment["PIDF_TOUR"] else { throw XCTSkip("PIDF_TOUR not set") }
-        let stored = UserDefaults.standard.object(forKey: "TwoPages")
-        defer { UserDefaults.standard.set(stored, forKey: "TwoPages") }
-        ReadingPositions.defaults = UserDefaults(suiteName: "PiDFTests")!
-        defer { ReadingPositions.defaults = UserDefaults(suiteName: "PiDFTests")! }
-        let tmp = try Fixtures.folder(self)
+        Scratch.restore(setting: "TwoPages", after: self)
+        Scratch.defaults()
+        let tmp = try Scratch.folder(self)
         let pages = (1...8).map { "Page \($0): the quick brown fox jumps over the lazy dog" }
         let a = try Fixtures.pdf(at: tmp.appendingPathComponent("Report.pdf"), pages: pages)
         let b = try Fixtures.pdf(at: tmp.appendingPathComponent("Slides.pdf"), pages: pages, size: CGSize(width: 960, height: 540))

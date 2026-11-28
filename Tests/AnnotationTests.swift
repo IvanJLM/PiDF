@@ -15,7 +15,7 @@ final class AnnotationTests: XCTestCase {
 
     private func open(_ pages: [String] = ["first page text", "second page text"],
                       name: String = "marks.pdf") throws -> (DocumentWindowController, URL) {
-        let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent(name), pages: pages)
+        let url = try Fixtures.pdf(at: try Scratch.folder(self).appendingPathComponent(name), pages: pages)
         return (app.open([url], nextTo: nil)[0], url)
     }
 
@@ -175,7 +175,7 @@ final class AnnotationTests: XCTestCase {
     // MARK: Note type and lines
 
     func testNoteTakesTheTypeOfThePagesText() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let url = try Fixtures.pdf(at: folder.appendingPathComponent("times.pdf"), pages: ["set in Times, like the document"],
                                    font: try XCTUnwrap(NSFont(name: "TimesNewRomanPSMT", size: 13)))
         let controller = app.open([url], nextTo: nil)[0]
@@ -244,7 +244,7 @@ final class AnnotationTests: XCTestCase {
     /// room above and below, and the file shows the note as PiDF drew it.
     func testNoteTextFitsItsBox() throws {
         let text = "Golden Rules first: fly, navigate, communicate. The PF trims until the AP can be engaged.\nSEC F-PLN for the EOSID of the day; ATC before ECAM actions, with no fire or severe damage."
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         for name in ["Helvetica", "TimesNewRomanPSMT", "AvenirNext-Regular"] {
             for size: CGFloat in [6, 9, 11, 18] {
                 let font = try XCTUnwrap(NSFont(name: name, size: size))
@@ -383,7 +383,7 @@ final class AnnotationTests: XCTestCase {
     }
 
     func testBackgroundTabWritesItsMarksAndKeepsThem() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let a = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 3)
         let b = try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 1)
         let first = app.open([a], nextTo: nil)[0]
@@ -419,7 +419,7 @@ final class AnnotationTests: XCTestCase {
     }
 
     func testAWriteBehindThatFailsBringsTheMarksBack() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let url = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 2)
         let controller = app.open([url], nextTo: nil)[0]
         controller.add(note: "kept", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(controller.pdf?.page(at: 0)))
@@ -517,14 +517,14 @@ final class AnnotationTests: XCTestCase {
     }
 
     func testBackgroundTabAsksWhenItComesBack() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let a = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 3)
         let first = app.open([a], nextTo: nil)[0]
         first.add(note: "mine", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(first.pdf?.page(at: 0)))
         // The write fails, so the marks are still waiting behind the other tab.
         try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
         addTeardownBlock { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
-        app.open([try Fixtures.pdf(in: try Fixtures.folder(self), name: "b.pdf", pageCount: 1)], nextTo: nil)
+        app.open([try Fixtures.pdf(in: try Scratch.folder(self), name: "b.pdf", pageCount: 1)], nextTo: nil)
         await waitUntil { first.isParked }
         await wait(0.5)
         XCTAssertTrue(first.hasUnsavedChanges)
@@ -545,7 +545,7 @@ final class AnnotationTests: XCTestCase {
     // MARK: Where marks can't be made
 
     func testProtectedAndReadOnlyDocumentsTakeNoMarks() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let locked = try Fixtures.pdf(at: folder.appendingPathComponent("locked.pdf"), pages: ["Secret"], password: "fixture-pw")
         let protected = app.open([locked], nextTo: nil)[0]
         await wait(0.2)

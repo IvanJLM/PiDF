@@ -15,7 +15,7 @@ final class FindTests: XCTestCase {
     }
 
     private func open(_ pages: [String]) throws -> DocumentWindowController {
-        let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent("find.pdf"), pages: pages)
+        let url = try Fixtures.pdf(at: try Scratch.folder(self).appendingPathComponent("find.pdf"), pages: pages)
         return app.open([url], nextTo: nil)[0]
     }
 
@@ -60,7 +60,7 @@ final class FindTests: XCTestCase {
 
     /// Text that a plain comparison gets wrong, in a font with ligatures.
     private func awkwardDocument() throws -> URL {
-        let url = try Fixtures.folder(self).appendingPathComponent("awkward.pdf")
+        let url = try Scratch.folder(self).appendingPathComponent("awkward.pdf")
         var box = CGRect(x: 0, y: 0, width: 595, height: 842)
         let context = try XCTUnwrap(CGContext(url as CFURL, mediaBox: &box, nil))
         let pages = [["Café crème à la carte, CAFÉ fort", "the office offers efficient flow fluid"],
@@ -115,7 +115,7 @@ final class FindTests: XCTestCase {
     }
 
     func testTheFileIsSearchedInPageOrderEveryTime() async throws {
-        let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent("long.pdf"), pages: (1...300).map { "needle \($0)" })
+        let url = try Fixtures.pdf(at: try Scratch.folder(self).appendingPathComponent("long.pdf"), pages: (1...300).map { "needle \($0)" })
         for _ in 1...10 {
             var pages: [Int] = []
             var done = false
@@ -150,7 +150,7 @@ final class FindTests: XCTestCase {
     }
 
     func testAProtectedDocumentIsSearchedWithItsPassword() async throws {
-        let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent("locked.pdf"), pages: ["secret needle"], password: "fixture-pw")
+        let url = try Fixtures.pdf(at: try Scratch.folder(self).appendingPathComponent("locked.pdf"), pages: ["secret needle"], password: "fixture-pw")
         let controller = app.open([url], nextTo: nil)[0]
         await waitUntil { controller.window?.attachedSheet != nil }
         XCTAssertTrue(controller.unlock(with: "fixture-pw"))
@@ -210,7 +210,7 @@ final class FindTests: XCTestCase {
     }
 
     func testASearchCutShortByAnotherTabGoesOnWhenItComesBack() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let url = try Fixtures.pdf(at: folder.appendingPathComponent("a.pdf"), pages: (1...400).map { "needle \($0)" })
         let first = app.open([url], nextTo: nil)[0]
         first.add(note: "not saved", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(first.pdf?.page(at: 0)))

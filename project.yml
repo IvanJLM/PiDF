@@ -58,6 +58,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ivanjlm.pidf.tests
         GENERATE_INFOPLIST_FILE: YES
+        # Cleans up when the run ends (Tests/Scratch.swift).
+        INFOPLIST_KEY_NSPrincipalClass: PiDFTestRun
 
 schemes:
   PiDF:

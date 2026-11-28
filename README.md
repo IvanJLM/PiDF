@@ -147,6 +147,7 @@ once: it offers to become the default PDF viewer.
 ./scripts/tour.sh                       # screenshots of the main states, in build/Tour
 ./scripts/bump-version.sh minor         # or patch / major, then fill in CHANGELOG.md
 ./scripts/forget-builds.sh              # take build copies out of Finder's "Open With" (the scripts above do it)
+./scripts/leftovers.sh ./scripts/test.sh     # what a run left outside the project folder (nothing, or it fails)
 swift scripts/make-icon.swift           # redraw the app icon
 ```
 
@@ -154,6 +155,11 @@ The tests write their own small PDFs with Core Graphics, so the repository
 holds no PDF files. Every pull request runs them on GitHub Actions, with a
 Release build that fails on any warning. The benchmark skips any app that is already running, so
 it never closes your own documents.
+
+A test run leaves the Mac as it found it: the tests keep their preferences
+and files apart from the real app's and remove them when the run ends
+(`Tests/Scratch.swift`), and the scripts do the same for what XcodeGen and
+Xcode leave in the temporary folder (`scripts/tidy.sh`).
 
 ## License
 

@@ -11,8 +11,7 @@ final class SaveAsTests: XCTestCase {
     private typealias Doc = DocumentWindowController
 
     override func setUp() async throws {
-        UserDefaults.standard.removePersistentDomain(forName: "PiDFTests")
-        ReadingPositions.defaults = UserDefaults(suiteName: "PiDFTests")!
+        Scratch.defaults()
     }
 
     override func tearDown() async throws {
@@ -40,7 +39,7 @@ final class SaveAsTests: XCTestCase {
     }
 
     func testOfferedWithOrWithoutChanges() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let controller = app.open([try Fixtures.pdf(in: folder, pageCount: 2)], nextTo: nil)[0]
         XCTAssertFalse(controller.validateMenuItem(item(#selector(Doc.saveDocument(_:)))), "Save: nothing to save")
         XCTAssertTrue(controller.validateMenuItem(item(#selector(Doc.saveDocumentAs(_:)))), "Save As: a copy anyway")
@@ -49,7 +48,7 @@ final class SaveAsTests: XCTestCase {
     }
 
     func testTheMarksGoToTheNewFileAndTheTabShowsIt() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let original = try Fixtures.pdf(at: folder.appendingPathComponent("original.pdf"), pages: ["one", "two", "three"])
         let controller = app.open([original], nextTo: nil)[0]
         controller.add(note: "only in the copy", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(controller.pdf?.page(at: 1)))
@@ -87,7 +86,7 @@ final class SaveAsTests: XCTestCase {
     }
 
     func testWithNothingChangedTheFileIsCopiedAsItIs() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let original = try Fixtures.pdf(in: folder, pageCount: 3)
         let controller = app.open([original], nextTo: nil)[0]
         let copy = folder.appendingPathComponent("same.pdf")
@@ -97,7 +96,7 @@ final class SaveAsTests: XCTestCase {
     }
 
     func testAProtectedDocumentKeepsItsPassword() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let locked = try Fixtures.pdf(at: folder.appendingPathComponent("locked.pdf"), pages: ["Secret"], password: "fixture-pw")
         let controller = app.open([locked], nextTo: nil)[0]
         await waitUntil { controller.window?.attachedSheet != nil }
@@ -116,7 +115,7 @@ final class SaveAsTests: XCTestCase {
     }
 
     func testTheNewFileIsFollowedAndTheOriginalNoLonger() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let original = try Fixtures.pdf(in: folder, pageCount: 2)
         let controller = app.open([original], nextTo: nil)[0]
         let copy = folder.appendingPathComponent("followed.pdf")
@@ -132,7 +131,7 @@ final class SaveAsTests: XCTestCase {
     }
 
     func testBothFilesReopenWhereTheyWereLeft() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let original = try Fixtures.pdf(in: folder, pageCount: 10)
         let controller = app.open([original], nextTo: nil)[0]
         controller.go(toIndex: 6)
@@ -143,7 +142,7 @@ final class SaveAsTests: XCTestCase {
     }
 
     func testAnExistingFileIsReplaced() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let original = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 2)
         let other = try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 7)
         let controller = app.open([original], nextTo: nil)[0]
@@ -152,7 +151,7 @@ final class SaveAsTests: XCTestCase {
     }
 
     func testAFileOpenInAnotherTabIsLeftAlone() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let a = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 2)
         let b = try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 5)
         let opened = app.open([a, b], nextTo: nil)
@@ -166,7 +165,7 @@ final class SaveAsTests: XCTestCase {
     }
 
     func testOverItselfItIsASave() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let url = try Fixtures.pdf(at: folder.appendingPathComponent("self.pdf"), pages: ["one"])
         let controller = app.open([url], nextTo: nil)[0]
         controller.add(note: "saved", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(controller.pdf?.page(at: 0)))
@@ -176,7 +175,7 @@ final class SaveAsTests: XCTestCase {
     }
 
     func testAFolderThatCantBeWrittenLeavesEverythingAsItWas() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let original = try Fixtures.pdf(in: folder, pageCount: 2)
         let closed = folder.appendingPathComponent("closed", isDirectory: true)
         try FileManager.default.createDirectory(at: closed, withIntermediateDirectories: true)
@@ -193,7 +192,7 @@ final class SaveAsTests: XCTestCase {
     }
 
     func testTheSaveAsPanelOpensAsASheet() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let controller = app.open([try Fixtures.pdf(in: folder, name: "panel.pdf", pageCount: 1)], nextTo: nil)[0]
         let window = try XCTUnwrap(controller.window)
         controller.saveDocumentAs(nil)
@@ -208,7 +207,7 @@ final class SaveAsTests: XCTestCase {
     }
 
     func testSaveInThePanelWritesWhereItSays() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let url = try Fixtures.pdf(at: folder.appendingPathComponent("panel.pdf"), pages: ["one"])
         let controller = app.open([url], nextTo: nil)[0]
         controller.add(note: "from the panel", at: NSPoint(x: 80, y: 400), on: try XCTUnwrap(controller.pdf?.page(at: 0)))

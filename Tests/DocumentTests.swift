@@ -11,16 +11,12 @@ final class DocumentTests: XCTestCase {
     private var positions: UserDefaults!
 
     override func setUp() async throws {
-        UserDefaults.standard.removePersistentDomain(forName: "PiDFTests")
-        positions = UserDefaults(suiteName: "PiDFTests")
-        ReadingPositions.defaults = positions
-        WindowFrame.defaults = positions
+        positions = Scratch.defaults()
     }
 
     override func tearDown() async throws {
         for controller in app.controllers { controller.close() }
         await wait(0.1)
-        ReadingPositions.defaults = UserDefaults(suiteName: "PiDFTests")!
     }
 
     func testMacOSNeverQuitsPiDFBehindAHiddenWindow() {
@@ -36,7 +32,7 @@ final class DocumentTests: XCTestCase {
     }
 
     func testDocumentsOpenAsTabsOfOneWindow() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let a = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 2)
         let b = try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 3)
         let c = try Fixtures.pdf(in: folder, name: "c.pdf", pageCount: 1)
@@ -49,7 +45,7 @@ final class DocumentTests: XCTestCase {
     }
 
     func testOpeningAnOpenDocumentSelectsItsTab() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let a = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 2)
         let b = try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 2)
         let first = app.open([a, b], nextTo: nil)[0]
@@ -59,14 +55,14 @@ final class DocumentTests: XCTestCase {
     }
 
     func testFilesThatAreNotPDFsAreNotOpened() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let fake = folder.appendingPathComponent("fake.pdf")
         try Data("not a pdf".utf8).write(to: fake)
         XCTAssertNil(PDFDocument(url: fake), "PiDF reports these instead of opening an empty window")
     }
 
     func testNewWindowShowsAWholePage() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let portrait = app.open([try Fixtures.pdf(in: folder, name: "p.pdf", pageCount: 2)], nextTo: nil)[0]
         let frame = try XCTUnwrap(portrait.window?.frame)
         let visible = try XCTUnwrap(portrait.window?.screen?.visibleFrame)
@@ -79,7 +75,7 @@ final class DocumentTests: XCTestCase {
     }
 
     func testNewWindowOpensWhereTheLastOneWasLeft() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let first = app.open([try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 2)], nextTo: nil)[0]
         let window = try XCTUnwrap(first.window)
         let visible = try XCTUnwrap(window.screen?.visibleFrame)
@@ -105,7 +101,7 @@ final class DocumentTests: XCTestCase {
     }
 
     func testDocumentFillsTheWindowUnderTheTitleBar() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let controller = app.open([try Fixtures.pdf(in: folder, pageCount: 2)], nextTo: nil)[0]
         let window = try XCTUnwrap(controller.window)
         XCTAssertTrue(window.styleMask.contains(.fullSizeContentView))
@@ -115,7 +111,7 @@ final class DocumentTests: XCTestCase {
     }
 
     func testPageNumberInTheTitleBar() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let controller = app.open([try Fixtures.pdf(in: folder, pageCount: 12)], nextTo: nil)[0]
         XCTAssertEqual(controller.window?.subtitle, "Page 1 of 12")
         controller.go(toIndex: 6)
@@ -126,7 +122,7 @@ final class DocumentTests: XCTestCase {
     }
 
     func testReopensAtThePageItWasLeftAt() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let url = try Fixtures.pdf(in: folder, pageCount: 20)
         let first = app.open([url], nextTo: nil)[0]
         first.go(toIndex: 13)
@@ -139,7 +135,7 @@ final class DocumentTests: XCTestCase {
     }
 
     func testReopensAtTheSameZoomAndSpot() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let url = try Fixtures.pdf(in: folder, pageCount: 20)
         let first = app.open([url], nextTo: nil)[0]
         await wait(0.2)
@@ -183,7 +179,7 @@ final class DocumentTests: XCTestCase {
     }
 
     func testFollowsChangesMadeByOtherApps() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let url = try Fixtures.pdf(in: folder, pageCount: 6)
         let controller = app.open([url], nextTo: nil)[0]
         controller.go(toIndex: 4)
@@ -200,9 +196,8 @@ final class DocumentTests: XCTestCase {
     }
 
     func testTwoPagesKeepsThePage() async throws {
-        let stored = UserDefaults.standard.object(forKey: "TwoPages")
-        defer { UserDefaults.standard.set(stored, forKey: "TwoPages") }
-        let folder = try Fixtures.folder(self)
+        Scratch.restore(setting: "TwoPages", after: self)
+        let folder = try Scratch.folder(self)
         let controller = app.open([try Fixtures.pdf(in: folder, pageCount: 30)], nextTo: nil)[0]
         controller.go(toIndex: 17)
         controller.toggleTwoPages(nil)
@@ -214,7 +209,7 @@ final class DocumentTests: XCTestCase {
     }
 
     func testProtectedDocumentsAskForThePassword() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let url = try Fixtures.pdf(at: folder.appendingPathComponent("locked.pdf"), pages: ["Secret", "More"], password: "fixture-pw")
         let controller = app.open([url], nextTo: nil)[0]
         XCTAssertEqual(controller.pdf?.isLocked, true)
@@ -239,7 +234,7 @@ final class TextRecognitionTests: XCTestCase {
     }
 
     func testDocumentsWithTextSkipRecognition() throws {
-        let url = try Fixtures.pdf(in: try Fixtures.folder(self), pageCount: 3)
+        let url = try Fixtures.pdf(in: try Scratch.folder(self), pageCount: 3)
         let controller = app.open([url], nextTo: nil)[0]
         XCTAssertFalse(controller.recognizesText)
     }
@@ -247,7 +242,7 @@ final class TextRecognitionTests: XCTestCase {
     func testCoverPagesWithoutTextAreNotAScan() throws {
         // A report whose cover, blank page and illustration are images.
         let pages = ["", "", ""] + (1...9).map { "Chapter \($0)" }
-        let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent("cover.pdf"), pages: pages)
+        let url = try Fixtures.pdf(at: try Scratch.folder(self).appendingPathComponent("cover.pdf"), pages: pages)
         let document = try XCTUnwrap(PDFDocument(url: url))
         XCTAssertFalse(DocumentWindowController.needsTextRecognition(document), "text after the cover: not a scan")
         let controller = app.open([url], nextTo: nil)[0]
@@ -255,12 +250,12 @@ final class TextRecognitionTests: XCTestCase {
     }
 
     func testShortDocumentWithOneTextPageIsNotAScan() throws {
-        let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent("short.pdf"), pages: ["", "", "", "Text"])
+        let url = try Fixtures.pdf(at: try Scratch.folder(self).appendingPathComponent("short.pdf"), pages: ["", "", "", "Text"])
         XCTAssertFalse(DocumentWindowController.needsTextRecognition(try XCTUnwrap(PDFDocument(url: url))))
     }
 
     func testScannedDocumentsKeepRecognition() throws {
-        let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent("scan.pdf"), pages: ["", "", ""])
+        let url = try Fixtures.pdf(at: try Scratch.folder(self).appendingPathComponent("scan.pdf"), pages: ["", "", ""])
         let document = try XCTUnwrap(PDFDocument(url: url))
         XCTAssertTrue(DocumentWindowController.needsTextRecognition(document), "no text: a scan")
         let controller = app.open([url], nextTo: nil)[0]
@@ -275,18 +270,16 @@ final class BackgroundTabTests: XCTestCase {
     private var app: AppDelegate { NSApp.delegate as! AppDelegate }
 
     override func setUp() async throws {
-        UserDefaults.standard.removePersistentDomain(forName: "PiDFTests")
-        ReadingPositions.defaults = UserDefaults(suiteName: "PiDFTests")!
+        Scratch.defaults()
     }
 
     override func tearDown() async throws {
         for controller in app.controllers { controller.close() }
         await wait(0.1)
-        ReadingPositions.defaults = UserDefaults(suiteName: "PiDFTests")!
     }
 
     func testTabsInTheBackgroundLetGoOfTheirPages() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let first = app.open([try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 20)], nextTo: nil)[0]
         first.go(toIndex: 12)
         first.actualSize(nil)
@@ -307,7 +300,7 @@ final class BackgroundTabTests: XCTestCase {
     }
 
     func testATabGoingToTheBackgroundSavesItsPage() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let url = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 20)
         let first = app.open([url], nextTo: nil)[0]
         first.go(toIndex: 9)
@@ -317,7 +310,7 @@ final class BackgroundTabTests: XCTestCase {
     }
 
     func testFindIsRefreshedWhenABackgroundTabWasReloaded() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let url = try Fixtures.pdf(at: folder.appendingPathComponent("a.pdf"), pages: ["needle one", "two", "needle three"])
         let first = app.open([url], nextTo: nil)[0]
         first.showFind(nil)
@@ -338,7 +331,7 @@ final class BackgroundTabTests: XCTestCase {
     }
 
     func testFindIsRefreshedWhenABackgroundTabWroteItsMarks() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let url = try Fixtures.pdf(at: folder.appendingPathComponent("a.pdf"), pages: ["needle one", "two", "needle three"])
         let first = app.open([url], nextTo: nil)[0]
         first.showFind(nil)
@@ -361,10 +354,9 @@ final class BackgroundTabTests: XCTestCase {
     }
 
     func testTwoPagesIsOneSettingForEveryTab() async throws {
-        let stored = UserDefaults.standard.object(forKey: "TwoPages")
-        defer { UserDefaults.standard.set(stored, forKey: "TwoPages") }
+        Scratch.restore(setting: "TwoPages", after: self)
         UserDefaults.standard.set(false, forKey: "TwoPages")
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let first = app.open([try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 12)], nextTo: nil)[0]
         first.go(toIndex: 7)
         let second = app.open([try Fixtures.pdf(in: folder, name: "b.pdf", pageCount: 6)], nextTo: nil)[0]
@@ -377,7 +369,7 @@ final class BackgroundTabTests: XCTestCase {
     }
 
     func testBackgroundTabFollowsChangesToo() async throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let url = try Fixtures.pdf(in: folder, name: "a.pdf", pageCount: 8)
         let first = app.open([url], nextTo: nil)[0]
         first.go(toIndex: 6)

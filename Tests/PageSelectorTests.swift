@@ -16,7 +16,7 @@ final class PageSelectorTests: XCTestCase {
     }
 
     private func open(pages: Int) throws -> (Doc, NSWindow, URL) {
-        let url = try Fixtures.pdf(in: try Fixtures.folder(self), pageCount: pages)
+        let url = try Fixtures.pdf(in: try Scratch.folder(self), pageCount: pages)
         let controller = app.open([url], nextTo: nil)[0]
         return (controller, try XCTUnwrap(controller.window), url)
     }
@@ -358,7 +358,7 @@ final class PageSelectorTests: XCTestCase {
     }
 
     func testALockedDocumentHasNoGrid() throws {
-        let url = try Fixtures.pdf(at: try Fixtures.folder(self).appendingPathComponent("locked.pdf"), pages: ["Secret"], password: "fixture-pw")
+        let url = try Fixtures.pdf(at: try Scratch.folder(self).appendingPathComponent("locked.pdf"), pages: ["Secret"], password: "fixture-pw")
         let controller = app.open([url], nextTo: nil)[0]
         XCTAssertFalse(controller.validateMenuItem(item(#selector(Doc.togglePageSelector(_:)))))
         controller.togglePageSelector(nil)

@@ -14,7 +14,7 @@ final class PageTests: XCTestCase {
     }
 
     private func open(pages: Int, in folder: URL? = nil) throws -> (DocumentWindowController, URL) {
-        let url = try Fixtures.pdf(in: try folder ?? Fixtures.folder(self), pageCount: pages)
+        let url = try Fixtures.pdf(in: try folder ?? Scratch.folder(self), pageCount: pages)
         return (app.open([url], nextTo: nil)[0], url)
     }
 
@@ -76,7 +76,7 @@ final class PageTests: XCTestCase {
     }
 
     func testReadOnlyFilesAndTheFindFieldKeepTheirPages() throws {
-        let folder = try Fixtures.folder(self)
+        let folder = try Scratch.folder(self)
         let (finding, _) = try open(pages: 3, in: folder)
         finding.showFind(nil)
         XCTAssertFalse(finding.validateMenuItem(deleteItem), "⌃D deletes forward in the field")
